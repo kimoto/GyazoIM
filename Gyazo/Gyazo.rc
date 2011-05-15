@@ -1,0 +1,23 @@
+#include <windows.h>
+#include <commctrl.h>
+#include <richedit.h>
+#include "resource.h"
+
+IDI_MAIN		ICON	"main.ico"
+IDI_MAIN_STOP	ICON	"taiyou_stop.ico"
+
+IDR_MENU MENU {
+	POPUP "dummy text"
+	{
+		MENUITEM "Inspecte", IDM_INSPECT;
+		MENUITEM "Capture", IDM_CAPTURE;
+		//MENUITEM "明るさ調節", IDM_CONTROL;
+		//MENUITEM "全体調整", IDM_GAMMA_CONTROL;
+		//MENUITEM "ショートカット作成", IDM_SHORTCUT;
+		//MENUITEM "リセット", IDM_RESET;
+		//MENUITEM "キー設定", IDM_KEYBOARD;
+		//MENUITEM "中断", IDM_STOP;
+		//MENUITEM "ポケモンフラッシュ(開始/中断)", IDM_POCKEMON;
+		MENUITEM "終了", IDM_EXIT;
+	}
+}

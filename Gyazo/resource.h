@@ -1,0 +1,8 @@
+#define IDI_MAIN 1001
+#define IDI_MAIN_STOP 1002
+
+#define IDR_MENU 3000
+
+#define IDM_EXIT 2001
+#define IDM_INSPECT 2002
+#define IDM_CAPTURE 2003
