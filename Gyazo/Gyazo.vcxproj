@@ -80,6 +80,7 @@
     <ClCompile Include="Util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\KeyHook\KeyHook\KeyHook.h" />
     <ClInclude Include="Gyazo.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Screenshot.h" />

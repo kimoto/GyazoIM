@@ -24,8 +24,6 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	return GetBitmapFromWindow(window, pbmi, pbits, &rect);
 }
 
-
-
 // 指定されたウインドウのビットマップ情報を取得して返却します
 HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pbits, RECT *rect)
 {

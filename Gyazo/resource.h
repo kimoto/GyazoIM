@@ -6,3 +6,4 @@
 #define IDM_EXIT 2001
 #define IDM_INSPECT 2002
 #define IDM_CAPTURE 2003
+#define IDM_KEYCONFIG 2004

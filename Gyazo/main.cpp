@@ -2,13 +2,13 @@
 #include <WindowsX.h>
 #include <map>
 #include <string>
-#include <sstream>
-#include <fstream>
-#include <time.h>
 #include "Gyazo.h"
 #include "Screenshot.h"
 #include "Util.h"
 #include "resource.h"
+
+#include "KeyHook.h"
+#pragma comment(lib, "KeyHook.lib")
 
 #define MUTEX_NAME L"Gyazo"
 
@@ -33,6 +33,10 @@ RECT mouseSelectedArea = {0};
 
 // ドラッグ中状態管理
 BOOL bDrag = FALSE; 
+
+// デバッグとして保存先をDesktopにする
+// ファイル名は{日付時間}.png
+#define DEBUG_LOCAL_SAVE
 
 ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
@@ -308,22 +312,24 @@ void OnLButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT keyFlags)
 
 		StopInspect();
 
+		// 選択領域を削除するコードをここに入れる
+		
 		try{
-			Screenshot::ScreenshotDesktop(L"screenshot.png", &rect);
+			Screenshot::ScreenshotDesktop(L"inspect.png", &rect);
 			Gyazo *g = new Gyazo();
 			g->UploadFileAndOpenURL(hWnd, L"screenshot.png");
 			delete g;
 		}catch(exception e){
 			::ErrorMessageBox(L"%s", e);
 		}
-		::MessageBeep(0);
+		::MessageBeep(MB_ICONASTERISK);
 	}
 }
 
 void OnRButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT keyFlags)
 {
 	::NoticeRedraw(oldHWND);
-	::MessageBeep(2);
+	::MessageBeep(MB_ICONASTERISK);
 	::StopInspect();
 }
 
@@ -354,6 +360,7 @@ void OnClose(HWND hWnd)
 	::DestroyWindow(hWnd);
 }
 
+#define IF_KEY_PRESS(lp) ((lp & (1 << 31)) == 0)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch(message){
@@ -363,6 +370,43 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HANDLE_MSG(hWnd, WM_DESTROY, OnDestroy);
 		HANDLE_MSG(hWnd, WM_COMMAND, OnCommand);
 		HANDLE_MSG(hWnd, WM_CLOSE, OnClose);
+
+	case WM_CREATE:
+		// キーボード設定
+		::SetWindowHandle(hWnd);
+		
+		KEYINFO keyInfo;
+		::ClearKeyInfo(&keyInfo);
+		keyInfo.key = VK_F9;
+		::RegistKey(keyInfo, WM_APP + 2);
+
+		if( !::StartHook() )
+			::ShowLastError();
+		break;
+
+	case WM_APP + 2:
+		if( IF_KEY_PRESS(lParam) ){
+			// キーが押された時点でのアクティブウインドウを取得する
+			HWND activeWindow = ::GetForegroundWindow();
+
+			// アクティブウインドウをスクリーンショット
+			RECT rect;
+			::GetWindowRect(activeWindow, &rect);
+			
+			try{
+				::Screenshot::ScreenshotDesktop(L"activewindow.png", &rect);
+				::MessageBeep(MB_ICONASTERISK); // 撮影音をこの時点で出す
+
+				Gyazo *g = new Gyazo();
+				g->UploadFileAndOpenURL(hWnd, L"activewindow.png");
+				delete g;
+			}catch(exception e){
+				::ErrorMessageBox(L"%s", e);
+			}
+
+			::MessageBeep(MB_ICONINFORMATION); // 投稿音をこの時点で出す
+		}
+		break;
 
 	case WM_TASKTRAY:
 		switch(lParam){
@@ -442,6 +486,8 @@ void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
 	trace(L"rect: %d,%d (%d,%d)\n", rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
 	::SendMessage(g_hSelectedArea, WM_PAINT, 0, 0);
 
+	// 選択領域を削除するコードをここに入れる
+
 	try{
 		// 指定の範囲をキャプチャ
 		::Screenshot::ScreenshotDesktop(L"capture.png", &rect);
@@ -451,7 +497,7 @@ void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
 	}catch(exception e){
 		::ErrorMessageBox(L"%s", e);
 	}
-	::MessageBeep(0);
+	::MessageBeep(MB_ICONASTERISK);
 }
 
 void Layer_OnPaint(HWND hWnd)
