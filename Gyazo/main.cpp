@@ -14,10 +14,21 @@
 // ファイル名は{日付時間}.png
 #define DEBUG_LOCAL_SAVE
 #define WM_TASKTRAY (WM_APP + 1)
+#define WM_ACTIVEWINDOW_SS (WM_USER + 1)
+#define WM_DESKTOP_SS (WM_USER + 2)
 #define ID_TASKTRAY 1
 #define S_TASKTRAY_TIPS L"Gyazo"
 #define MUTEX_NAME L"GyazoIM"
 #define IF_KEY_PRESS(lp) ((lp & (1 << 31)) == 0)
+
+#define DLG_KEYCONFIG_PROC_WINDOW_TITLE L"キー設定"
+#define DLG_KEYCONFIG_ASK L"キーを入力してください"
+#define DLG_KEYCONFIG_ASK_BUTTON_TITLE L"入力"
+#define DLG_KEYCONFIG_DEFAULT_BUTTON_TITLE L"設定"
+#define DLG_MONITOR_GAMMA_WINDOW_TITLE_FORMAT L"%sのガンマ調節"
+
+#define SCREENSHOT_FILEPATH L"screenshot.png"
+#define CURSOR_FONT L"Tahoma"
 
 HINSTANCE g_hInstance = NULL;
 TCHAR szWindowClass[] = L"GyazoIM";
@@ -27,6 +38,10 @@ HWND g_hSelectedArea = NULL;
 HWND oldHWND = NULL;
 BOOL bStartCapture = FALSE;
 HHOOK g_hook = NULL;
+
+// キーボードショートカット用構造体
+KEYINFO g_activeSSKeyInfo = {0};
+KEYINFO g_desktopSSKeyInfo = {0};
 
 // クライアントからスクリーン座標に変換
 POINT mousePressedPt = {0};		// マウスクリックした場所(始点)
@@ -93,6 +108,20 @@ void ScreenShotAndUpload(HWND forErrorMessage, LPCTSTR path, RECT *rect)
 	::MessageBeep(MB_ICONASTERISK); // 投稿音をこの時点で出す
 }
 
+void ScreenShotAndUpload_ActiveWindow(HWND forErrorMessage, LPCTSTR path)
+{
+	RECT rect;
+	::GetWindowRect(::GetForegroundWindow(), &rect);
+	::ScreenShotAndUpload(forErrorMessage, path, &rect);
+}
+
+void ScreenShotAndUpload_Desktop(HWND forErrorMessage, LPCTSTR path)
+{
+	RECT rect;
+	::GetWindowRect(::GetDesktopWindow(), &rect);
+	ScreenShotAndUpload(forErrorMessage, path, &rect);
+}
+
 LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wp, LPARAM lp)
 {
 	if( nCode < 0 ) //nCodeが負、HC_NOREMOVEの時は何もしない
@@ -132,6 +161,7 @@ BOOL StopInspect()
 			::ShowLastError();
 			return FALSE;
 		}
+		g_hook = NULL;
 	}
 	bStartCapture = FALSE;
 	return TRUE;
@@ -156,7 +186,7 @@ LRESULT CALLBACK SelectedAreaWndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
 			CLIP_DEFAULT_PRECIS,//クリッピング精度
 			PROOF_QUALITY,        //出力品質
 			FIXED_PITCH | FF_MODERN,//ピッチとファミリー
-			L"Tahoma");    //書体名
+			CURSOR_FONT);    //書体名
 		break;
 	case WM_CLOSE:
 	case WM_DESTROY:
@@ -327,6 +357,257 @@ void OnDestroy(HWND hWnd)
 	::PostQuitMessage(0);
 }
 
+void QuickSetKeyInfo(KEYINFO *info, int optKey, int key)
+{
+	// clear keyinfo
+	::ClearKeyInfo(info);
+
+	if(optKey == VK_CONTROL){
+		info->ctrlKey = VK_CONTROL;
+	}else if(optKey == VK_SHIFT){
+		info->shiftKey = VK_SHIFT;
+	}else if(optKey == VK_MENU){
+		info->altKey = VK_MENU;
+	}else{
+		//::ErrorMessageBox(L"unknown optKey type");
+	}
+
+	info->key = key;
+}
+
+
+// KEYINFO構造体を文字列表現にします
+LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
+{
+	LPTSTR alt, ctrl, shift, key;
+	alt = ctrl = shift = key = NULL;
+
+	if(keyInfo->altKey != KEY_NOT_SET)
+		alt		= ::GetKeyNameTextEx(keyInfo->altKey);
+	if(keyInfo->ctrlKey != KEY_NOT_SET)
+		ctrl	= ::GetKeyNameTextEx(keyInfo->ctrlKey);
+	if(keyInfo->shiftKey != KEY_NOT_SET)
+		shift	= ::GetKeyNameTextEx(keyInfo->shiftKey);
+	if(keyInfo->key != KEY_NOT_SET)
+		key		= ::GetKeyNameTextEx(keyInfo->key);
+
+	LPTSTR buffer = NULL;
+	if(alt == NULL && ctrl == NULL && shift == NULL && key == NULL){
+		buffer = ::sprintf_alloc(L"");
+	}else if(alt == NULL && ctrl == NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s", key);
+	}else if(alt == NULL && ctrl == NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", shift, key);
+	}else if(alt == NULL && ctrl != NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", ctrl, key);
+	}else if(alt != NULL && ctrl == NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", alt, key);
+	}else if(alt == NULL && ctrl != NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, shift, key);
+	}else if(alt != NULL && ctrl == NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", alt, shift, key);
+	}else if(alt != NULL && ctrl != NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, alt, key);
+	}else if(alt != NULL && ctrl != NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s + %s", ctrl, alt, shift, key);
+	}else{
+		buffer = ::sprintf_alloc(L"undef!");
+		::ErrorMessageBox(L"キー設定に失敗しました");
+	}
+
+	::GlobalFree(alt);
+	::GlobalFree(ctrl);
+	::GlobalFree(shift);
+	::GlobalFree(key);
+	return buffer;
+}
+
+void SetCurrentKeyConfigToGUI(HWND hWnd)
+{
+	LPTSTR active	= ::GetKeyInfoString(&g_activeSSKeyInfo);
+	LPTSTR desktop	= ::GetKeyInfoString(&g_desktopSSKeyInfo);
+
+	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_ACTIVEWINDOW, active);
+	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_DESKTOP, desktop);
+	
+	::GlobalFree(active);
+	::GlobalFree(desktop);
+}
+
+void SetCurrentKeyConfigToGUI(HWND hWnd, KEYINFO *kup, KEYINFO *kdown)
+{
+	LPTSTR up		= ::GetKeyInfoString(kup);
+	LPTSTR down		= ::GetKeyInfoString(kdown);
+
+	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_ACTIVEWINDOW, up);
+	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_DESKTOP, down);
+	
+	::GlobalFree(up);
+	::GlobalFree(down);
+}
+
+HWND g_hKeyConfigDlg = NULL;
+HHOOK g_hKeyConfigHook = NULL;
+
+// キー設定用、キーフックプロシージャ(not グローバル / グローバルはDLLを利用しなければ行えない)
+LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wp, LPARAM lp)
+{
+	//nCodeが0未満のときは、CallNextHookExが返した値を返す
+	if (nCode < 0)  return CallNextHookEx(g_hKeyConfigHook,nCode,wp,lp);
+
+	if (nCode==HC_ACTION) {
+		//キーの遷移状態のビットをチェックして
+		//WM_KEYDOWNとWM_KEYUPをDialogに送信する
+		if ( IF_KEY_PRESS(lp) ) {
+			PostMessage(g_hKeyConfigDlg,WM_KEYDOWN,wp,lp);
+			return TRUE;
+		}else{
+			PostMessage(g_hKeyConfigDlg,WM_KEYUP,wp,lp);
+			return TRUE;
+		}
+	}
+	return CallNextHookEx(g_hKeyConfigHook,nCode,wp,lp);
+}
+
+INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+	static UINT targetID = -1;
+	BYTE keyTbl[256];
+	int optKey = 0;
+
+	// 一時格納用バッファ
+	static KEYINFO activeSSKeyInfo = {0};
+	static KEYINFO desktopSSKeyInfo = {0};
+	
+	switch( msg ){
+	case WM_INITDIALOG:  // ダイアログボックスが作成されたとき
+		::SetWindowTopMost(g_hKeyConfigDlg); // ウインドウを最前面にします
+		::SetCurrentKeyConfigToGUI(hDlg); // 現在のキー設定をGUI上に反映させます
+
+		// 一時格納用バッファを初期化します
+		activeSSKeyInfo = ::g_activeSSKeyInfo;
+		desktopSSKeyInfo = ::g_desktopSSKeyInfo;
+
+		// ウインドウのタイトルを規定のものに設定します
+		::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
+		return TRUE;
+
+	case WM_KEYDOWN:
+		if( !::GetKeyboardState((PBYTE)&keyTbl) ){
+			ShowLastError();
+			exit(-1);
+		}
+
+		// 入力された補助キーを判断して代入
+		KEYINFO tmp;
+		::ClearKeyInfo(&tmp);
+		if( keyTbl[VK_CONTROL] & 0x80 ){
+			// wpと一緒だったらwp使えばいいので入力しません
+			if(wp != VK_CONTROL)
+				tmp.ctrlKey = VK_CONTROL;
+		}
+		if( keyTbl[VK_SHIFT] & 0x80 ){
+			if(wp != VK_SHIFT)
+				tmp.shiftKey = VK_SHIFT;
+		}
+		if( keyTbl[VK_MENU] & 0x80 ){
+			if(wp != VK_MENU)
+				tmp.altKey = VK_MENU;
+		}
+		tmp.key = wp;
+
+		// 入力されたキーをUI上に反映させます
+		{
+			LPTSTR lpKeyConfigBuffer = ::GetKeyInfoString(&tmp);
+			::SetDlgItemText(g_hKeyConfigDlg, targetID, lpKeyConfigBuffer);
+			::GlobalFree(lpKeyConfigBuffer);
+		}
+
+		if(targetID == IDC_EDIT_KEYBIND_ACTIVEWINDOW){
+			activeSSKeyInfo = tmp;
+		}else if(targetID == IDC_EDIT_KEYBIND_DESKTOP){
+			desktopSSKeyInfo = tmp;
+		}
+		return TRUE;
+
+	case WM_KEYUP:
+		if(targetID == IDC_EDIT_KEYBIND_ACTIVEWINDOW){
+			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_ACTIVEWINDOW, DLG_KEYCONFIG_DEFAULT_BUTTON_TITLE);
+			::UnhookWindowsHookEx(g_hKeyConfigHook);
+			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
+			g_hKeyConfigHook = NULL;
+
+		}else if(targetID == IDC_EDIT_KEYBIND_DESKTOP){
+			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_DESKTOP, DLG_KEYCONFIG_DEFAULT_BUTTON_TITLE);
+			::UnhookWindowsHookEx(g_hKeyConfigHook);
+			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
+			g_hKeyConfigHook = NULL;
+
+		}
+		break;
+
+	case WM_COMMAND:     // ダイアログボックス内の何かが選択されたとき
+		switch( LOWORD( wp ) ){
+		case IDOK:       // 適用ボタンが選択された
+			::StopHook();
+
+			::g_activeSSKeyInfo = activeSSKeyInfo;
+			::g_desktopSSKeyInfo = desktopSSKeyInfo;
+
+			RegistKey(g_activeSSKeyInfo, WM_ACTIVEWINDOW_SS);
+			RegistKey(g_desktopSSKeyInfo, WM_DESKTOP_SS);
+			if(!::StartHook())
+				::ShowLastError();
+
+			EndDialog(g_hKeyConfigDlg, LOWORD(wp));
+			hDlg = NULL;
+			break;
+		case IDCANCEL:   // 「キャンセル」ボタンが選択された
+			// ダイアログボックスを消す
+			EndDialog(g_hKeyConfigDlg, LOWORD(wp));
+			hDlg = NULL;
+			break;
+		case ID_KEYBIND_ACTIVEWINDOW:
+			if(::g_hKeyConfigHook == NULL)
+				g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
+			targetID = IDC_EDIT_KEYBIND_ACTIVEWINDOW;
+			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_ACTIVEWINDOW, DLG_KEYCONFIG_ASK_BUTTON_TITLE);
+			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_ASK);
+			break;
+		case ID_KEYBIND_DESKTOP:
+			if(::g_hKeyConfigHook == NULL)
+				g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
+			targetID = IDC_EDIT_KEYBIND_DESKTOP;
+			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_DESKTOP, DLG_KEYCONFIG_ASK_BUTTON_TITLE);
+			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_ASK);
+			break;
+		case IDDEFAULT: // デフォルトボタンが押されたとき
+			// setup default key config
+			::QuickSetKeyInfo(&activeSSKeyInfo, VK_CONTROL, VK_PRIOR);
+			::QuickSetKeyInfo(&desktopSSKeyInfo, VK_CONTROL, VK_NEXT);
+			
+			// 現在のキー設定をGUIに反映します
+			SetCurrentKeyConfigToGUI(hDlg, &activeSSKeyInfo, &desktopSSKeyInfo);
+			break;
+		}
+		return TRUE;
+
+	case WM_CLOSE:		// ダイアログボックスが閉じられるとき
+		// ダイアログボックスを消す
+		// フックされてたらそれを消す
+		if(::g_hKeyConfigHook){
+			::UnhookWindowsHookEx(g_hKeyConfigHook);
+			g_hKeyConfigHook = NULL;
+		}
+
+		EndDialog(hDlg, LOWORD(wp));
+		hDlg = NULL;
+		return TRUE;
+	}
+
+	return FALSE;  // DefWindowProc()ではなく、FALSEを返すこと！
+}
+
 void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 {
 	switch(id){
@@ -338,6 +619,11 @@ void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 		break;
 	case IDM_CAPTURE:
 		StartCapture();
+		break;
+	case IDM_KEYCONFIG:
+		// キー設定ダイアログ表示
+		::g_hKeyConfigDlg = ::CreateDialog(::g_hInstance, MAKEINTRESOURCE(IDD_KEYCONFIG_DIALOG),
+			hWnd, DlgKeyConfigProc);
 		break;
 	}
 }
@@ -360,13 +646,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HANDLE_MSG(hWnd, WM_CLOSE, OnClose);
 
 	case WM_CREATE:
+		// キーショートカットの初期状態読み込み
+		::ClearKeyInfo(&::g_activeSSKeyInfo);
+		::ClearKeyInfo(&::g_desktopSSKeyInfo);
+
+		::g_activeSSKeyInfo.key = ::g_desktopSSKeyInfo.key = VK_F9;
+		::g_desktopSSKeyInfo.ctrlKey = VK_CONTROL;
+
+		//::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// F9
+		//::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// CTRL + F9
+
 		// キーボード設定
 		::SetWindowHandle(hWnd);
-		
-		KEYINFO keyInfo;
-		::ClearKeyInfo(&keyInfo);
-		keyInfo.key = VK_F9;
-		::RegistKey(keyInfo, WM_APP + 2);
+		::RegistKey(g_activeSSKeyInfo, WM_ACTIVEWINDOW_SS);
+		::RegistKey(g_desktopSSKeyInfo, WM_DESKTOP_SS);
 
 		if( !::StartHook() )
 			::ShowLastError();
@@ -375,12 +668,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		taskBarMsg = RegisterWindowMessage(TEXT("TaskbarCreated"));
 		break;
 
-	case WM_APP + 2:
+	case WM_ACTIVEWINDOW_SS:
 		if( IF_KEY_PRESS(lParam) ){
-			// キーが押された時点でのアクティブウインドウを取得する
-			RECT rect;
-			::GetWindowRect(::GetForegroundWindow(), &rect);
-			ScreenShotAndUpload(hWnd, L"screenshot.png", &rect);
+			::ScreenShotAndUpload_ActiveWindow(hWnd, SCREENSHOT_FILEPATH);
+		}
+		break;
+
+	case WM_DESKTOP_SS:
+		if( IF_KEY_PRESS(lParam) ){
+			::ScreenShotAndUpload_Desktop(hWnd, SCREENSHOT_FILEPATH);
 		}
 		break;
 

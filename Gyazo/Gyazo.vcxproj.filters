@@ -50,4 +50,9 @@
       <Filter>リソース ファイル</Filter>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="Gyazo.exe.manifest">
+      <Filter>リソース ファイル</Filter>
+    </Manifest>
+  </ItemGroup>
 </Project>

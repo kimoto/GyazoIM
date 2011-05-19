@@ -54,6 +54,7 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	pbmi->bmiHeader.biHeight = height;
 	pbmi->bmiHeader.biPlanes = 1;
 	pbmi->bmiHeader.biBitCount = ::GetDeviceCaps(hdc, BITSPIXEL); // デスクトップのカラーbit数取得
+	//pbmi->bmiHeader.biBitCount = 8;
 	trace(L"color bit: %d\n", pbmi->bmiHeader.biBitCount);
 	pbmi->bmiHeader.biSizeImage = pbmi->bmiHeader.biWidth * pbmi->bmiHeader.biHeight * (pbmi->bmiHeader.biBitCount / 8); // カラーbit数に合わせて倍数が変わる
 
