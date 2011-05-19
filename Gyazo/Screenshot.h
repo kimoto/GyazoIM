@@ -15,9 +15,6 @@ public:
 
 	static BOOL ScreenshotDesktop(LPCTSTR fileName);
 	static BOOL ScreenshotDesktop(LPCTSTR fileName, RECT *rect);
-	static BOOL ScreenshotPrintWindow(LPCTSTR fileName, HWND window);
-	static HBITMAP CreateBackbuffer(int nWidth, int nHeight);
-	static BOOL ScreenshotWindow(LPCTSTR fileName, HWND window);
 	static BOOL ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect);
 	static BOOL SaveToFileAutoDetectFormat(HBITMAP hBitmap, LPCTSTR fileName);
 	static BOOL GetClsidEncoderFromFileName(LPCTSTR fileName, LPCLSID lpClsid);

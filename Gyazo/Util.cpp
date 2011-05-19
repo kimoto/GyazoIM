@@ -687,6 +687,8 @@ LPTSTR GetWindowTitle(HWND hWnd)
 // 指定されたIDのコンテキストメニューを表示します
 BOOL ShowContextMenu(HWND hWnd, UINT menuID)
 {
+	// 実質メモリリークしてるけど何回繰り返しても一定値から増えないから気にしてない
+	// おそらくwindows側で同じインスタンスが存在しないように管理してくれてる
 	HMENU hMenu = ::LoadMenu(NULL, MAKEINTRESOURCE(menuID));
 	HMENU hSubMenu = ::GetSubMenu(hMenu, 0);
 	
@@ -698,4 +700,46 @@ BOOL ShowContextMenu(HWND hWnd, UINT menuID)
 	::TrackPopupMenu(hSubMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, point.x, point.y, 0, hWnd, NULL);
 	::PostMessage(hWnd, WM_NULL, 0, 0);
 	return TRUE;
+}
+
+void TasktrayAddIcon(HINSTANCE hInstance, UINT msg, UINT id, UINT iconId, LPCTSTR tips, HWND hWnd)
+{
+	NOTIFYICONDATA nid;
+	nid.cbSize           = sizeof( NOTIFYICONDATA );
+	nid.uFlags           = (NIF_ICON|NIF_MESSAGE|NIF_TIP);
+	nid.hWnd             = hWnd;           // ウインドウ・ハンドル
+	nid.hIcon            = ::LoadIcon(hInstance, MAKEINTRESOURCE(iconId));          // アイコン・ハンドル
+	nid.uID              = id; 	// アイコン識別子の定数
+	nid.uCallbackMessage = msg;    // 通知メッセージの定数
+	lstrcpy(nid.szTip, tips);  // チップヘルプの文字列
+
+	// アイコンの変更
+	if( !Shell_NotifyIcon( NIM_ADD, &nid ) )
+		::ShowLastError();
+}
+
+void TasktrayModifyIcon(HINSTANCE hInstance, UINT msg, UINT id, HWND hWnd,  LPCTSTR tips, UINT icon)
+{
+	NOTIFYICONDATA nid;
+	nid.cbSize           = sizeof( NOTIFYICONDATA );
+	nid.uFlags           = (NIF_ICON|NIF_MESSAGE|NIF_TIP);
+	nid.hWnd             = hWnd;           // ウインドウ・ハンドル
+	nid.hIcon            = ::LoadIcon(hInstance, MAKEINTRESOURCE(icon));          // アイコン・ハンドル
+	nid.uID              = id; 	// アイコン識別子の定数
+	nid.uCallbackMessage = msg;    // 通知メッセージの定数
+	lstrcpy( nid.szTip, tips );  // チップヘルプの文字列
+
+	if( !::Shell_NotifyIcon(NIM_MODIFY, &nid) )
+		::ShowLastError();
+}
+
+void TasktrayDeleteIcon(HWND hWnd, UINT id)
+{
+	NOTIFYICONDATA nid; 
+	nid.cbSize = sizeof(NOTIFYICONDATA); 
+	nid.hWnd = hWnd;				// メインウィンドウハンドル
+	nid.uID = id;			// コントロールID
+	
+	if( !::Shell_NotifyIcon(NIM_DELETE, &nid) )
+		::ShowLastError();
 }

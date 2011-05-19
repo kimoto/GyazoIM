@@ -1,5 +1,5 @@
 ﻿#pragma once
-#define WIN32_LEAN_AND_MEAN
+//#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <WindowsX.h>
 #include <stdlib.h>
@@ -68,6 +68,9 @@ BOOL BackupFile(LPCTSTR filePath, LPCTSTR backupExt);
 BOOL RestoreFile(LPCTSTR filePath, LPCTSTR backupExt);
 LPTSTR GetWindowTitle(HWND hWnd);
 BOOL ShowContextMenu(HWND hWnd, UINT menuID);
+void TasktrayAddIcon(HINSTANCE hInstance, UINT msg, UINT id, UINT iconId, LPCTSTR tips, HWND hWnd);
+void TasktrayModifyIcon(HINSTANCE hInstance, UINT msg, UINT id, HWND hWnd,  LPCTSTR tips, UINT icon);
+void TasktrayDeleteIcon(HWND hWnd, UINT id);
 
 // 多重起動防止用簡易クラス
 #include <exception>

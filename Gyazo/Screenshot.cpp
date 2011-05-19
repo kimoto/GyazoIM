@@ -34,6 +34,7 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	trace(L"get window dc\n");
 	HDC hdc = ::GetWindowDC(window);
 	if(hdc == NULL){
+		::ReleaseDC(window, hdc);
 		::ShowLastError();
 		return NULL;
 	}
@@ -42,6 +43,7 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	trace(L"create compatible dc\n");
 	HDC myhdc = ::CreateCompatibleDC(hdc);
 	if(myhdc == NULL){
+		::DeleteDC(myhdc);
 		::ShowLastError();
 		return NULL;
 	}
@@ -56,9 +58,10 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	pbmi->bmiHeader.biSizeImage = pbmi->bmiHeader.biWidth * pbmi->bmiHeader.biHeight * (pbmi->bmiHeader.biBitCount / 8); // カラーbit数に合わせて倍数が変わる
 
 	trace(L"create compatible bitmap\n");
-	//HBITMAP hBitmap = ::CreateCompatibleBitmap(myhdc, width, height);
 	HBITMAP hBitmap = ::CreateDIBSection(hdc, pbmi, DIB_RGB_COLORS, pbits, NULL, 0);
 	if(hBitmap == NULL){
+		::ReleaseDC(window, hdc);
+		::DeleteDC(myhdc);
 		::ShowLastError();
 		return NULL;
 	}
@@ -67,15 +70,20 @@ HBITMAP Screenshot::GetBitmapFromWindow(HWND window, BITMAPINFO *pbmi, void **pb
 	
 	trace(L"copy bitmap: window dc -> memory dc\n");
 	if( ::BitBlt(myhdc, 0, 0, pbmi->bmiHeader.biWidth, pbmi->bmiHeader.biHeight, hdc, rect->left, rect->top, SRCCOPY) == 0 ){
+		::SelectObject(myhdc, oldBitmap);
+		::ReleaseDC(window, hdc);
+		::DeleteDC(myhdc);
 		::ShowLastError();
 		return NULL;
 	}
+
 	::SelectObject(myhdc, oldBitmap);
 	::ReleaseDC(window, hdc);
-
+	::DeleteDC(myhdc);
 	return hBitmap;
 }
 
+// 指定されたhBitmapを保存します
 BOOL Screenshot::SaveBitmapToFile(HBITMAP hBitmap, BITMAPINFO *pbmi, void *pbits, LPCTSTR fileName)
 {
 	// header構築
@@ -120,6 +128,7 @@ BOOL Screenshot::SaveBitmapToFile(HBITMAP hBitmap, BITMAPINFO *pbmi, void *pbits
 	return TRUE;
 }
 
+// MIME-TYPEをもとにEncoderを取得します
 BOOL Screenshot::GetClsidEncoderFromMimeType(LPCTSTR format, LPCLSID lpClsid)
 {
 	UINT num, size;
@@ -149,6 +158,7 @@ BOOL Screenshot::GetClsidEncoderFromMimeType(LPCTSTR format, LPCLSID lpClsid)
 	return FALSE;
 }
 
+// ファイル名をもとに、Enocderを取得します
 BOOL Screenshot::GetClsidEncoderFromFileName(LPCTSTR fileName, LPCLSID lpClsid)
 {
 	UINT num, size;
@@ -178,43 +188,42 @@ BOOL Screenshot::GetClsidEncoderFromFileName(LPCTSTR fileName, LPCLSID lpClsid)
 	return FALSE;
 }
 
+// 指定されたファイル名で、hBitmapを保存します
 BOOL Screenshot::SaveToFileAutoDetectFormat(HBITMAP hBitmap, LPCTSTR fileName)
 {
 	ULONG_PTR token;
-	GdiplusStartupInput input;
+	::GdiplusStartupInput input;
 	::GdiplusStartup(&token, &input, NULL);
 
 	CLSID clsid;
 	if( !GetClsidEncoderFromFileName(fileName, &clsid) ){
 		::ShowLastError();
+		::GdiplusShutdown(token);
 		return FALSE;
 	}
 
-	::Bitmap *b = new Bitmap(hBitmap, NULL);
-	if( 0 != b->Save(fileName, &clsid, 0) ){
+	EncoderParameters params;
+	params.Count = 1;
+	params.Parameter[0].Guid = EncoderQuality;
+	params.Parameter[0].Type = EncoderParameterValueTypeLong;
+	params.Parameter[0].NumberOfValues = 1;
+	int quality = 0;
+	params.Parameter[0].Value = &quality;
+
+	Bitmap *b = new Bitmap(hBitmap, NULL);
+	if( 0 != b->Save(fileName, &clsid, &params) ){
 		::ShowLastError();
+		delete b;		
+		::GdiplusShutdown(token);
 		return FALSE;
 	}
-
+	
 	delete b;
 	::GdiplusShutdown(token);
 	return TRUE;
 }
 
-// 出力ファイルの拡張子に合わせてエンコード
-BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window)
-{
-	BITMAPINFO bmi = {0};
-	void *pbits = NULL;
-	HBITMAP hBitmap = GetBitmapFromWindow(window, &bmi, &pbits);
-	if(hBitmap == NULL){
-		::ShowLastError();
-		return FALSE;
-	}
-	return SaveToFileAutoDetectFormat(hBitmap, fileName);
-}
-
-// 出力ファイルの拡張子に合わせてエンコード
+// 指定のウインドウの、指定の範囲をスクリーンショットします
 BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect)
 {
 	BITMAPINFO bmi = {0};
@@ -224,54 +233,15 @@ BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect)
 		::ShowLastError();
 		return FALSE;
 	}
-	return SaveToFileAutoDetectFormat(hBitmap, fileName);
-}
-
-HBITMAP Screenshot::CreateBackbuffer(int nWidth, int nHeight)
-{
-	LPVOID           lp;
-	BITMAPINFO       bmi;
-	BITMAPINFOHEADER bmiHeader;
-
-	ZeroMemory(&bmiHeader, sizeof(BITMAPINFOHEADER));
-	bmiHeader.biSize      = sizeof(BITMAPINFOHEADER);
-	bmiHeader.biWidth     = nWidth;
-	bmiHeader.biHeight    = nHeight;
-	bmiHeader.biPlanes    = 1;
-	bmiHeader.biBitCount  = 24;
-
-	bmi.bmiHeader = bmiHeader;
-
-	return CreateDIBSection(NULL, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp, NULL, 0);
-}
-
-// 出力ファイルの拡張子に合わせてエンコード
-BOOL Screenshot::ScreenshotPrintWindow(LPCTSTR fileName, HWND window)
-{
-	// windowと同じDCを作成
-	RECT rect;
-	::GetWindowRect(window, &rect);
-	HDC hdc = ::CreateCompatibleDC(NULL);
-	HBITMAP hBitmap = CreateBackbuffer(rect.right - rect.left, rect.bottom - rect.top);
-	HGDIOBJ prev = ::SelectObject(hdc, hBitmap);
-
-	::BitBlt(hdc, 0, 0, rect.right - rect.left, rect.bottom - rect.top, ::GetWindowDC(::GetDesktopWindow()), rect.left, rect.top, SRCCOPY);
-
-	SaveToFileAutoDetectFormat(hBitmap, fileName);
+	BOOL bRet = SaveToFileAutoDetectFormat(hBitmap, fileName);
 	
-	::SelectObject(hdc, prev);
-	::ReleaseDC(window, hdc);
-	return TRUE;
-}
-
-// Desktopのスクリーンショットを撮影してファイルに保存します
-BOOL Screenshot::ScreenshotDesktop(LPCTSTR fileName)
-{
-	return ScreenshotWindow(fileName, ::GetDesktopWindow());
+	// hbitmapとbitsの解放
+	::DeleteObject(hBitmap);
+	return bRet;
 }
 
 // Desktopのスクリーンショットを撮影してファイルに保存します
 BOOL Screenshot::ScreenshotDesktop(LPCTSTR fileName, RECT *rect)
 {
-	return ScreenshotWindow(fileName, ::GetDesktopWindow(), rect);
+	return ScreenshotWindow(fileName, GetDesktopWindow(), rect);
 }

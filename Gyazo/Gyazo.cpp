@@ -21,7 +21,7 @@ string getId()
 	ifstream ifs;
 
 	ifs.open(idFile);
-	if (! ifs.fail()) {
+	if (!ifs.fail()) {
 		// ID を読み込む
 		ifs >> idStr;
 		ifs.close();
@@ -83,26 +83,29 @@ BOOL Gyazo::SetClipboardText(LPCTSTR string)
 
 	LPTSTR buffer = (LPTSTR)::GlobalLock(windowsMemory);
 	if(buffer == NULL){
+		::GlobalFree(windowsMemory);
 		return FALSE;
 	}
 	::lstrcpy(buffer, string);
 	::GlobalUnlock(windowsMemory);
 
 	if( !::OpenClipboard(NULL) ){
+		::GlobalFree(windowsMemory);
 		return FALSE;
 	}
 
 	if( !::EmptyClipboard() ){
 		::CloseClipboard();
+		::GlobalFree(windowsMemory);
 		return FALSE;
 	}
 
 	if( ::SetClipboardData(CF_UNICODETEXT, windowsMemory) == NULL ){
 		::CloseClipboard();
+		::GlobalFree(windowsMemory);
 		return FALSE;
 	}
 	::CloseClipboard();
-
 	::GlobalFree(windowsMemory); // 開放しちゃ駄目みたいだけど、実質解放しても機能してるので解放
 	// おそらくクリップボード用のバッファにすでに複製されてる??
 	// あるいはシステム側に保護されてる?
