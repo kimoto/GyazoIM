@@ -71,6 +71,9 @@ BOOL ShowContextMenu(HWND hWnd, UINT menuID);
 void TasktrayAddIcon(HINSTANCE hInstance, UINT msg, UINT id, UINT iconId, LPCTSTR tips, HWND hWnd);
 void TasktrayModifyIcon(HINSTANCE hInstance, UINT msg, UINT id, HWND hWnd,  LPCTSTR tips, UINT icon);
 void TasktrayDeleteIcon(HWND hWnd, UINT id);
+HWND WindowFromCursorPos();
+void NoticeRedraw(HWND hWnd);
+void RectangleNormalize(RECT *rect);
 
 // 多重起動防止用簡易クラス
 #include <exception>

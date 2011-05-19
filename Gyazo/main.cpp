@@ -38,6 +38,8 @@ HWND g_hSelectedArea = NULL;
 HWND oldHWND = NULL;
 BOOL bStartCapture = FALSE;
 HHOOK g_hook = NULL;
+HWND g_hKeyConfigDlg = NULL;
+HHOOK g_hKeyConfigHook = NULL;
 
 // キーボードショートカット用構造体
 KEYINFO g_activeSSKeyInfo = {0};
@@ -55,12 +57,68 @@ ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-void NoticeRedraw(HWND hWnd)
+void QuickSetKeyInfo(KEYINFO *info, int optKey, int key)
 {
-	::InvalidateRect(hWnd, NULL, FALSE);
-	::UpdateWindow(hWnd);
-	::RedrawWindow(hWnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
-	::SendMessage(hWnd, WM_PAINT, 0, 0);
+	// clear keyinfo
+	::ClearKeyInfo(info);
+
+	if(optKey == VK_CONTROL){
+		info->ctrlKey = VK_CONTROL;
+	}else if(optKey == VK_SHIFT){
+		info->shiftKey = VK_SHIFT;
+	}else if(optKey == VK_MENU){
+		info->altKey = VK_MENU;
+	}else{
+		;
+	}
+
+	info->key = key;
+}
+
+// KEYINFO構造体を文字列表現にします
+LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
+{
+	LPTSTR alt, ctrl, shift, key;
+	alt = ctrl = shift = key = NULL;
+
+	if(keyInfo->altKey != KEY_NOT_SET)
+		alt		= ::GetKeyNameTextEx(keyInfo->altKey);
+	if(keyInfo->ctrlKey != KEY_NOT_SET)
+		ctrl	= ::GetKeyNameTextEx(keyInfo->ctrlKey);
+	if(keyInfo->shiftKey != KEY_NOT_SET)
+		shift	= ::GetKeyNameTextEx(keyInfo->shiftKey);
+	if(keyInfo->key != KEY_NOT_SET)
+		key		= ::GetKeyNameTextEx(keyInfo->key);
+
+	LPTSTR buffer = NULL;
+	if(alt == NULL && ctrl == NULL && shift == NULL && key == NULL){
+		buffer = ::sprintf_alloc(L"");
+	}else if(alt == NULL && ctrl == NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s", key);
+	}else if(alt == NULL && ctrl == NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", shift, key);
+	}else if(alt == NULL && ctrl != NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", ctrl, key);
+	}else if(alt != NULL && ctrl == NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s", alt, key);
+	}else if(alt == NULL && ctrl != NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, shift, key);
+	}else if(alt != NULL && ctrl == NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", alt, shift, key);
+	}else if(alt != NULL && ctrl != NULL && shift == NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, alt, key);
+	}else if(alt != NULL && ctrl != NULL && shift != NULL && key != NULL){
+		buffer = ::sprintf_alloc(L"%s + %s + %s + %s", ctrl, alt, shift, key);
+	}else{
+		buffer = ::sprintf_alloc(L"undef!");
+		::ErrorMessageBox(L"キー設定に失敗しました");
+	}
+
+	::GlobalFree(alt);
+	::GlobalFree(ctrl);
+	::GlobalFree(shift);
+	::GlobalFree(key);
+	return buffer;
 }
 
 // 指定されたウインドウを強調します
@@ -71,7 +129,7 @@ BOOL HighlightWindow(HWND hWnd)
 		return FALSE;
 	}
 
-	HPEN hPen = CreatePen(PS_SOLID, 3, RGB(255, 0, 0));
+	HPEN hPen = CreatePen(PS_SOLID, 5, RGB(255, 0, 0));
 	HBRUSH hBrush = (HBRUSH)::GetStockObject(HOLLOW_BRUSH);
 
 	HGDIOBJ hPrevPen = ::SelectObject(hdc, hPen);
@@ -297,14 +355,10 @@ BOOL StopCapture()
 
 void OnMouseMove(HWND hwnd, int x, int y, UINT keyFlags)
 {
-	if(::bStartCapture)
-	{
-		POINT pt = {x, y};
-		trace(L"mouse: %d,%d\n", pt.x, pt.y);
-
-		HWND h = ::WindowFromPoint(pt);
-		if( h ){
+	if(::bStartCapture) { // Inspectモードの間違い
+		if( HWND h = ::WindowFromCursorPos() ){
 			if(oldHWND != h){
+				::NoticeRedraw(h);
 				::NoticeRedraw(oldHWND);
 				oldHWND = NULL;
 			}
@@ -316,37 +370,27 @@ void OnMouseMove(HWND hwnd, int x, int y, UINT keyFlags)
 	}
 }
 
-HWND WindowFromCursorPos()
-{
-	POINT pt;
-	::GetCursorPos(&pt);
-	return ::WindowFromPoint(pt);
-}
-
 void OnLButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT keyFlags)
 {
 	if( bStartCapture ){
-		HWND h = WindowFromCursorPos();
-		if(h == NULL){
-			::ErrorMessageBox(L"マウスカーソル下にウインドウが見つかりません");
-			return;
+		if( HWND h = WindowFromCursorPos() ){
+			::NoticeRedraw(oldHWND);
+			::NoticeRedraw(h);
+			StopInspect();
+
+			// 選択領域を削除するコードをここに入れる
+			RECT rect;
+			::GetWindowRect(h, &rect);
+			::ScreenShotAndUpload(hWnd, L"inspect.png", &rect);
 		}
-
-		::NoticeRedraw(oldHWND);
-		::NoticeRedraw(h);
-		StopInspect();
-
-		// 選択領域を削除するコードをここに入れる
-		RECT rect;
-		::GetWindowRect(h, &rect);
-		::ScreenShotAndUpload(hWnd, L"inspect.png", &rect);
 	}
 }
 
+// インスペクト中に右クリックで、中止処理
 void OnRButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT keyFlags)
 {
+	::NoticeRedraw(hWnd);
 	::NoticeRedraw(oldHWND);
-	::MessageBeep(MB_ICONASTERISK);
 	::StopInspect();
 }
 
@@ -355,83 +399,6 @@ void OnDestroy(HWND hWnd)
 	::StopInspect();
 	::TasktrayDeleteIcon(hWnd, ID_TASKTRAY);
 	::PostQuitMessage(0);
-}
-
-void QuickSetKeyInfo(KEYINFO *info, int optKey, int key)
-{
-	// clear keyinfo
-	::ClearKeyInfo(info);
-
-	if(optKey == VK_CONTROL){
-		info->ctrlKey = VK_CONTROL;
-	}else if(optKey == VK_SHIFT){
-		info->shiftKey = VK_SHIFT;
-	}else if(optKey == VK_MENU){
-		info->altKey = VK_MENU;
-	}else{
-		//::ErrorMessageBox(L"unknown optKey type");
-	}
-
-	info->key = key;
-}
-
-
-// KEYINFO構造体を文字列表現にします
-LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
-{
-	LPTSTR alt, ctrl, shift, key;
-	alt = ctrl = shift = key = NULL;
-
-	if(keyInfo->altKey != KEY_NOT_SET)
-		alt		= ::GetKeyNameTextEx(keyInfo->altKey);
-	if(keyInfo->ctrlKey != KEY_NOT_SET)
-		ctrl	= ::GetKeyNameTextEx(keyInfo->ctrlKey);
-	if(keyInfo->shiftKey != KEY_NOT_SET)
-		shift	= ::GetKeyNameTextEx(keyInfo->shiftKey);
-	if(keyInfo->key != KEY_NOT_SET)
-		key		= ::GetKeyNameTextEx(keyInfo->key);
-
-	LPTSTR buffer = NULL;
-	if(alt == NULL && ctrl == NULL && shift == NULL && key == NULL){
-		buffer = ::sprintf_alloc(L"");
-	}else if(alt == NULL && ctrl == NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s", key);
-	}else if(alt == NULL && ctrl == NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", shift, key);
-	}else if(alt == NULL && ctrl != NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", ctrl, key);
-	}else if(alt != NULL && ctrl == NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", alt, key);
-	}else if(alt == NULL && ctrl != NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, shift, key);
-	}else if(alt != NULL && ctrl == NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", alt, shift, key);
-	}else if(alt != NULL && ctrl != NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, alt, key);
-	}else if(alt != NULL && ctrl != NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s + %s", ctrl, alt, shift, key);
-	}else{
-		buffer = ::sprintf_alloc(L"undef!");
-		::ErrorMessageBox(L"キー設定に失敗しました");
-	}
-
-	::GlobalFree(alt);
-	::GlobalFree(ctrl);
-	::GlobalFree(shift);
-	::GlobalFree(key);
-	return buffer;
-}
-
-void SetCurrentKeyConfigToGUI(HWND hWnd)
-{
-	LPTSTR active	= ::GetKeyInfoString(&g_activeSSKeyInfo);
-	LPTSTR desktop	= ::GetKeyInfoString(&g_desktopSSKeyInfo);
-
-	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_ACTIVEWINDOW, active);
-	::SetDlgItemText(hWnd, IDC_EDIT_KEYBIND_DESKTOP, desktop);
-	
-	::GlobalFree(active);
-	::GlobalFree(desktop);
 }
 
 void SetCurrentKeyConfigToGUI(HWND hWnd, KEYINFO *kup, KEYINFO *kdown)
@@ -446,8 +413,10 @@ void SetCurrentKeyConfigToGUI(HWND hWnd, KEYINFO *kup, KEYINFO *kdown)
 	::GlobalFree(down);
 }
 
-HWND g_hKeyConfigDlg = NULL;
-HHOOK g_hKeyConfigHook = NULL;
+void SetCurrentKeyConfigToGUI(HWND hWnd)
+{
+	::SetCurrentKeyConfigToGUI(hWnd, &::g_activeSSKeyInfo, &::g_desktopSSKeyInfo);
+}
 
 // キー設定用、キーフックプロシージャ(not グローバル / グローバルはDLLを利用しなければ行えない)
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wp, LPARAM lp)
@@ -522,7 +491,8 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 			::SetDlgItemText(g_hKeyConfigDlg, targetID, lpKeyConfigBuffer);
 			::GlobalFree(lpKeyConfigBuffer);
 		}
-
+		
+		// 現在アクティブに編集してる構造体に情報保存s
 		if(targetID == IDC_EDIT_KEYBIND_ACTIVEWINDOW){
 			activeSSKeyInfo = tmp;
 		}else if(targetID == IDC_EDIT_KEYBIND_DESKTOP){
@@ -533,18 +503,16 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 	case WM_KEYUP:
 		if(targetID == IDC_EDIT_KEYBIND_ACTIVEWINDOW){
 			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_ACTIVEWINDOW, DLG_KEYCONFIG_DEFAULT_BUTTON_TITLE);
-			::UnhookWindowsHookEx(g_hKeyConfigHook);
-			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
-			g_hKeyConfigHook = NULL;
-
 		}else if(targetID == IDC_EDIT_KEYBIND_DESKTOP){
 			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_DESKTOP, DLG_KEYCONFIG_DEFAULT_BUTTON_TITLE);
-			::UnhookWindowsHookEx(g_hKeyConfigHook);
-			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
-			g_hKeyConfigHook = NULL;
-
 		}
-		break;
+
+		::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_PROC_WINDOW_TITLE);
+		if(::g_hKeyConfigHook){
+			::UnhookWindowsHookEx(g_hKeyConfigHook);
+		}
+		g_hKeyConfigHook = NULL;
+		return TRUE;
 
 	case WM_COMMAND:     // ダイアログボックス内の何かが選択されたとき
 		switch( LOWORD( wp ) ){
@@ -560,27 +528,29 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 				::ShowLastError();
 
 			EndDialog(g_hKeyConfigDlg, LOWORD(wp));
-			hDlg = NULL;
-			break;
+			::g_hKeyConfigDlg = NULL;
+			return TRUE;
+
 		case IDCANCEL:   // 「キャンセル」ボタンが選択された
 			// ダイアログボックスを消す
 			EndDialog(g_hKeyConfigDlg, LOWORD(wp));
-			hDlg = NULL;
-			break;
+			::g_hKeyConfigDlg = NULL;
+			return TRUE;
+
 		case ID_KEYBIND_ACTIVEWINDOW:
-			if(::g_hKeyConfigHook == NULL)
-				g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
+			g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
 			targetID = IDC_EDIT_KEYBIND_ACTIVEWINDOW;
 			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_ACTIVEWINDOW, DLG_KEYCONFIG_ASK_BUTTON_TITLE);
 			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_ASK);
-			break;
+			return TRUE;
+
 		case ID_KEYBIND_DESKTOP:
-			if(::g_hKeyConfigHook == NULL)
-				g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
+			g_hKeyConfigHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardProc, NULL, GetWindowThreadProcessId(hDlg, NULL));
 			targetID = IDC_EDIT_KEYBIND_DESKTOP;
 			::SetDlgItemText(g_hKeyConfigDlg, ID_KEYBIND_DESKTOP, DLG_KEYCONFIG_ASK_BUTTON_TITLE);
 			::SetWindowText(g_hKeyConfigDlg, DLG_KEYCONFIG_ASK);
-			break;
+			return TRUE;
+
 		case IDDEFAULT: // デフォルトボタンが押されたとき
 			// setup default key config
 			::QuickSetKeyInfo(&activeSSKeyInfo, VK_CONTROL, VK_F9);
@@ -588,21 +558,8 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 			
 			// 現在のキー設定をGUIに反映します
 			SetCurrentKeyConfigToGUI(hDlg, &activeSSKeyInfo, &desktopSSKeyInfo);
-			break;
+			return TRUE;
 		}
-		return TRUE;
-
-	case WM_CLOSE:		// ダイアログボックスが閉じられるとき
-		// ダイアログボックスを消す
-		// フックされてたらそれを消す
-		if(::g_hKeyConfigHook){
-			::UnhookWindowsHookEx(g_hKeyConfigHook);
-			g_hKeyConfigHook = NULL;
-		}
-
-		EndDialog(hDlg, LOWORD(wp));
-		hDlg = NULL;
-		return TRUE;
 	}
 
 	return FALSE;  // DefWindowProc()ではなく、FALSEを返すこと！
@@ -622,8 +579,9 @@ void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 		break;
 	case IDM_KEYCONFIG:
 		// キー設定ダイアログ表示
-		::g_hKeyConfigDlg = ::CreateDialog(::g_hInstance, MAKEINTRESOURCE(IDD_KEYCONFIG_DIALOG),
-			hWnd, DlgKeyConfigProc);
+		// 常に一つのウインドウだけ表示
+		if(::g_hKeyConfigDlg == NULL)
+			::g_hKeyConfigDlg = ::CreateDialog(::g_hInstance, MAKEINTRESOURCE(IDD_KEYCONFIG_DIALOG), hWnd, DlgKeyConfigProc);
 		break;
 	}
 }
@@ -647,11 +605,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	case WM_CREATE:
 		// キーショートカットの初期状態読み込み
-		::ClearKeyInfo(&::g_activeSSKeyInfo);
-		::ClearKeyInfo(&::g_desktopSSKeyInfo);
-
-		::QuickSetKeyInfo(&::g_activeSSKeyInfo, VK_CONTROL, VK_F9);	// CTRL + F9
-		::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_MENU, VK_F9);	// ALT + F9
+		::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// CTRL + F9
+		::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// ALT + F9
 
 		// キーボード設定
 		::SetWindowHandle(hWnd);
@@ -722,25 +677,8 @@ void Layer_OnMouseLButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT 
 	::ClientToScreen(hWnd, &pt);
 
 	bDrag = TRUE;
-	mousePressedPt.x = pt.x;
-	mousePressedPt.y = pt.y;
+	mousePressedPt = pt;
 	trace(L"mouse ldown: %d,%d\n", x, y);
-}
-
-void RectangleNormalize(RECT *rect)
-{
-	// 常に左上基点の構造体に変換
-	if(rect->right - rect->left < 0){
-		// 左右逆
-		int tmp = rect->left;
-		rect->left = rect->right;
-		rect->right = tmp;
-	}
-	if(rect->bottom - rect->top < 0){
-		int tmp = rect->top;
-		rect->top = rect->bottom;
-		rect->bottom = tmp;
-	}
 }
 
 void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
@@ -749,8 +687,7 @@ void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
 	::ClientToScreen(hWnd, &pt);
 
 	bDrag = FALSE;
-	mouseReleasedPt.x = pt.x;
-	mouseReleasedPt.y = pt.y;
+	::mouseReleasedPt = pt;
 	trace(L"mouse lup: %d,%d\n", x, y);
 
 	::DestroyWindow(hWnd);
@@ -775,11 +712,9 @@ void Layer_OnPaint(HWND hWnd)
 		RECT rect;
 		::GetWindowRect(hWnd, &rect);
 		::FillRectBrush(hdc, 0, 0, rect.right - rect.left, rect.bottom - rect.top, RGB(255,255,255));
-		
-		int width = mouseSelectedArea.right - mouseSelectedArea.left;
-		int height = mouseSelectedArea.bottom - mouseSelectedArea.top;
-
-		::FillRectBrush(hdc, mouseSelectedArea.left, mouseSelectedArea.top, width, height, RGB(0,0,0));
+		::FillRectBrush(hdc, mouseSelectedArea.left, mouseSelectedArea.top,
+			mouseSelectedArea.right - mouseSelectedArea.left,
+			mouseSelectedArea.bottom - mouseSelectedArea.top, RGB(0,0,0));
 
 		::EndPaint(hWnd, &ps);
 	}

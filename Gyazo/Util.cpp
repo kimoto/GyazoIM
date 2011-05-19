@@ -743,3 +743,34 @@ void TasktrayDeleteIcon(HWND hWnd, UINT id)
 	if( !::Shell_NotifyIcon(NIM_DELETE, &nid) )
 		::ShowLastError();
 }
+
+HWND WindowFromCursorPos()
+{
+	POINT pt;
+	::GetCursorPos(&pt);
+	return ::WindowFromPoint(pt);
+}
+
+void NoticeRedraw(HWND hWnd)
+{
+	::InvalidateRect(hWnd, NULL, FALSE);
+	::UpdateWindow(hWnd);
+	::RedrawWindow(hWnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	::SendMessage(hWnd, WM_PAINT, 0, 0);
+}
+
+void RectangleNormalize(RECT *rect)
+{
+	// 常に左上基点の構造体に変換
+	if(rect->right - rect->left < 0){
+		// 左右逆
+		int tmp = rect->left;
+		rect->left = rect->right;
+		rect->right = tmp;
+	}
+	if(rect->bottom - rect->top < 0){
+		int tmp = rect->top;
+		rect->top = rect->bottom;
+		rect->bottom = tmp;
+	}
+}
