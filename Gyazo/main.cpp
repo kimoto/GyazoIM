@@ -583,8 +583,8 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 			break;
 		case IDDEFAULT: // デフォルトボタンが押されたとき
 			// setup default key config
-			::QuickSetKeyInfo(&activeSSKeyInfo, VK_CONTROL, VK_PRIOR);
-			::QuickSetKeyInfo(&desktopSSKeyInfo, VK_CONTROL, VK_NEXT);
+			::QuickSetKeyInfo(&activeSSKeyInfo, VK_CONTROL, VK_F9);
+			::QuickSetKeyInfo(&desktopSSKeyInfo, VK_MENU, VK_F9);
 			
 			// 現在のキー設定をGUIに反映します
 			SetCurrentKeyConfigToGUI(hDlg, &activeSSKeyInfo, &desktopSSKeyInfo);
@@ -650,11 +650,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		::ClearKeyInfo(&::g_activeSSKeyInfo);
 		::ClearKeyInfo(&::g_desktopSSKeyInfo);
 
-		::g_activeSSKeyInfo.key = ::g_desktopSSKeyInfo.key = VK_F9;
-		::g_desktopSSKeyInfo.ctrlKey = VK_CONTROL;
-
-		//::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// F9
-		//::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// CTRL + F9
+		::QuickSetKeyInfo(&::g_activeSSKeyInfo, VK_CONTROL, VK_F9);	// CTRL + F9
+		::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_MENU, VK_F9);	// ALT + F9
 
 		// キーボード設定
 		::SetWindowHandle(hWnd);
