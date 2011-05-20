@@ -121,6 +121,94 @@ LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
 	return buffer;
 }
 
+// 実行ファイルのディレクトリに、config.ini(デフォルト)を付加した物になります
+// 動的にバッファを格納して返却するので、解放必須です
+LPTSTR GetConfigPath(LPTSTR fileName=L"config.ini")
+{
+	LPTSTR lpExecDirectory = (LPTSTR)::GlobalAlloc(GMEM_FIXED, MAX_PATH * sizeof(TCHAR));
+	if( ::GetExecuteDirectory(lpExecDirectory, MAX_PATH) ) {
+		LPTSTR lpConfigPath = sprintf_alloc(L"%s%s", lpExecDirectory, fileName);
+		::GlobalFree(lpExecDirectory);
+		return lpConfigPath;
+	} else {
+		::GlobalFree(lpExecDirectory);
+		::ShowLastError();
+		return NULL;
+	}
+}
+
+void GetPrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath)
+{
+	LPTSTR key = ::sprintf_alloc(L"%s.key", baseKeyName);
+	LPTSTR ctrl = ::sprintf_alloc(L"%s.ctrlKey", baseKeyName);
+	LPTSTR shift = ::sprintf_alloc(L"%s.shiftKey", baseKeyName);
+	LPTSTR alt = ::sprintf_alloc(L"%s.altKey", baseKeyName);
+
+	keyInfo->key		= ::GetPrivateProfileInt(section, key, keyInfo->key, configPath);
+	keyInfo->ctrlKey	= ::GetPrivateProfileInt(section, ctrl, keyInfo->ctrlKey, configPath);
+	keyInfo->shiftKey	= ::GetPrivateProfileInt(section, shift, keyInfo->shiftKey, configPath);
+	keyInfo->altKey		= ::GetPrivateProfileInt(section, alt, keyInfo->altKey, configPath);
+
+	::GlobalFree(key);
+	::GlobalFree(ctrl);
+	::GlobalFree(shift);
+	::GlobalFree(alt);
+}
+
+void WritePrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath)
+{
+	LPTSTR key = ::sprintf_alloc(L"%s.key", baseKeyName);
+	LPTSTR ctrl = ::sprintf_alloc(L"%s.ctrlKey", baseKeyName);
+	LPTSTR shift = ::sprintf_alloc(L"%s.shiftKey", baseKeyName);
+	LPTSTR alt = ::sprintf_alloc(L"%s.altKey", baseKeyName);
+
+	::WritePrivateProfileInt(section, key, keyInfo->key, configPath);
+	::WritePrivateProfileInt(section, ctrl, keyInfo->ctrlKey, configPath);
+	::WritePrivateProfileInt(section, shift, keyInfo->shiftKey, configPath);
+	::WritePrivateProfileInt(section, alt, keyInfo->altKey, configPath);
+
+	::GlobalFree(key);
+	::GlobalFree(ctrl);
+	::GlobalFree(shift);
+	::GlobalFree(alt);
+}
+
+void LoadConfig()
+{
+	LPTSTR lpConfigPath = NULL;
+	
+	__try{
+		lpConfigPath = ::GetConfigPath();
+
+		// setup default key config
+		::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);
+		::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);
+
+		// load keyconfig
+		::GetPrivateProfileKeyInfo(L"KeyBind", L"g_activeSSKeyInfo", &::g_activeSSKeyInfo, lpConfigPath);
+		::GetPrivateProfileKeyInfo(L"KeyBind", L"g_desktopSSKeyInfo", &::g_desktopSSKeyInfo, lpConfigPath);
+	}__finally{
+		if(lpConfigPath)
+			::GlobalFree(lpConfigPath);
+	}
+}
+
+void SaveConfig()
+{
+	LPTSTR lpConfigPath = NULL;
+	
+	__try{
+		lpConfigPath = ::GetConfigPath();
+
+		// save keyconfig
+		::WritePrivateProfileKeyInfo(L"KeyBind", L"g_activeSSKeyInfo", &::g_activeSSKeyInfo, lpConfigPath);
+		::WritePrivateProfileKeyInfo(L"KeyBind", L"g_desktopSSKeyInfo", &::g_desktopSSKeyInfo, lpConfigPath);
+	}__finally{
+		if(lpConfigPath)
+			::GlobalFree(lpConfigPath);
+	}
+}
+
 // 指定されたウインドウを強調します
 BOOL HighlightWindow(HWND hWnd)
 {
@@ -569,6 +657,7 @@ void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 {
 	switch(id){
 	case IDM_EXIT:
+		::SaveConfig();
 		::DestroyWindow(hWnd);
 		break;
 	case IDM_INSPECT:
@@ -588,6 +677,7 @@ void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 
 void OnClose(HWND hWnd)
 {
+	::SaveConfig();
 	::DestroyWindow(hWnd);
 }
 
@@ -604,9 +694,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HANDLE_MSG(hWnd, WM_CLOSE, OnClose);
 
 	case WM_CREATE:
+		// 設定ファイル読み込み
+		LoadConfig();
+
 		// キーショートカットの初期状態読み込み
-		::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// CTRL + F9
-		::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// ALT + F9
+		// ::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// CTRL + F9
+		// ::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// ALT + F9
 
 		// キーボード設定
 		::SetWindowHandle(hWnd);

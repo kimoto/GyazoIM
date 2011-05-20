@@ -774,3 +774,19 @@ void RectangleNormalize(RECT *rect)
 		rect->bottom = tmp;
 	}
 }
+
+std::wstring str2wstr(std::string str)
+{
+	// マルチバイト文字を変換するに当たって、変換後の文字数を調べます
+	int need_buf_size = ::MultiByteToWideChar(0, 0, str.c_str(), str.size(), NULL, 0);
+
+	// そのサイズだけ確保し、変換します
+	wchar_t *wbuf = new wchar_t[need_buf_size];
+	::MultiByteToWideChar(CP_UTF8, 0, str.c_str(), str.size(), wbuf, need_buf_size);
+
+	// 返却するためにオブジェクトにくるみます
+	std::wstring result;
+	result += wbuf;
+	delete wbuf;
+	return result;
+}

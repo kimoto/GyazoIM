@@ -5,7 +5,6 @@
 #include <fstream>
 #include <sstream>
 #include "Util.h"
-
 #include <GdiPlus.h>
 #pragma comment(lib, "gdiplus.lib")
 
@@ -18,7 +17,6 @@ class Gyazo
 {
 private:
 	BOOL _UploadFile(LPCTSTR fileName);
-	BOOL SetClipboardText(LPCTSTR text);
 	HINTERNET Gyazo::HTTPPost(map<wstring, wstring> config, string boundary_data);
 	string Gyazo::HTTPPostAndReadData(map<wstring, wstring> config, string boundary_data);
 	string Gyazo::HTTPPostMultipart(map<string, string> files);
@@ -37,4 +35,7 @@ public:
 
 	// gyazoサーバー上にアップしつつついでに、クリップボードにURLコピーしたりとかする
 	BOOL Gyazo::UploadFileAndOpenURL(HWND hWnd, wstring filePath);
+
+	// clipboardに任意のテキストを設定します
+	BOOL Gyazo::SetClipboardText(LPCTSTR text);
 };

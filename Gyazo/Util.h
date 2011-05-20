@@ -14,6 +14,7 @@
 #pragma comment(lib, "shlwapi")
 
 #include <math.h>
+#include <string>
 
 // ダイアログ用のメッセージクラッカー
 #define HANDLE_DLG_MSG(hwnd, msg, fn) \
@@ -74,6 +75,7 @@ void TasktrayDeleteIcon(HWND hWnd, UINT id);
 HWND WindowFromCursorPos();
 void NoticeRedraw(HWND hWnd);
 void RectangleNormalize(RECT *rect);
+std::wstring str2wstr(std::string str);
 
 // 多重起動防止用簡易クラス
 #include <exception>

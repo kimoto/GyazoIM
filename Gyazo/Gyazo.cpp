@@ -331,13 +331,12 @@ BOOL Gyazo::UploadFileAndOpenURL(HWND hWnd, wstring filePath)
 	
 	// gyazoサーバーにアップロードします
 	string clipURL = UploadFile(getId(), filePath);
-	
+	wstring wClipURL = str2wstr(clipURL);
+	trace(L"gyazo URL: %s\n", wClipURL.c_str());
+
 	// クリップボードに URL をコピー
 	if (m_settings.count(L"copy_url") && m_settings[L"copy_url"] == L"yes") {
-		this->SetClipboardText((LPCTSTR)clipURL.c_str());
-		if (m_settings.count(L"copy_dialog") && m_settings[L"copy_dialog"] == L"yes") {
-			MessageBox(hWnd,_T("クリップボードにアドレスをコピーしました"),_T("Info"),MB_OK|MB_ICONINFORMATION);
-		}
+		this->SetClipboardText(wClipURL.c_str());
 	}
 			
 	// URL を起動
