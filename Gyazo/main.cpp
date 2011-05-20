@@ -57,128 +57,14 @@ ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-void QuickSetKeyInfo(KEYINFO *info, int optKey, int key)
-{
-	// clear keyinfo
-	::ClearKeyInfo(info);
-
-	if(optKey == VK_CONTROL){
-		info->ctrlKey = VK_CONTROL;
-	}else if(optKey == VK_SHIFT){
-		info->shiftKey = VK_SHIFT;
-	}else if(optKey == VK_MENU){
-		info->altKey = VK_MENU;
-	}else{
-		;
-	}
-
-	info->key = key;
-}
-
-// KEYINFO構造体を文字列表現にします
-LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
-{
-	LPTSTR alt, ctrl, shift, key;
-	alt = ctrl = shift = key = NULL;
-
-	if(keyInfo->altKey != KEY_NOT_SET)
-		alt		= ::GetKeyNameTextEx(keyInfo->altKey);
-	if(keyInfo->ctrlKey != KEY_NOT_SET)
-		ctrl	= ::GetKeyNameTextEx(keyInfo->ctrlKey);
-	if(keyInfo->shiftKey != KEY_NOT_SET)
-		shift	= ::GetKeyNameTextEx(keyInfo->shiftKey);
-	if(keyInfo->key != KEY_NOT_SET)
-		key		= ::GetKeyNameTextEx(keyInfo->key);
-
-	LPTSTR buffer = NULL;
-	if(alt == NULL && ctrl == NULL && shift == NULL && key == NULL){
-		buffer = ::sprintf_alloc(L"");
-	}else if(alt == NULL && ctrl == NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s", key);
-	}else if(alt == NULL && ctrl == NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", shift, key);
-	}else if(alt == NULL && ctrl != NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", ctrl, key);
-	}else if(alt != NULL && ctrl == NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s", alt, key);
-	}else if(alt == NULL && ctrl != NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, shift, key);
-	}else if(alt != NULL && ctrl == NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", alt, shift, key);
-	}else if(alt != NULL && ctrl != NULL && shift == NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s", ctrl, alt, key);
-	}else if(alt != NULL && ctrl != NULL && shift != NULL && key != NULL){
-		buffer = ::sprintf_alloc(L"%s + %s + %s + %s", ctrl, alt, shift, key);
-	}else{
-		buffer = ::sprintf_alloc(L"undef!");
-		::ErrorMessageBox(L"キー設定に失敗しました");
-	}
-
-	::GlobalFree(alt);
-	::GlobalFree(ctrl);
-	::GlobalFree(shift);
-	::GlobalFree(key);
-	return buffer;
-}
-
-// 実行ファイルのディレクトリに、config.ini(デフォルト)を付加した物になります
-// 動的にバッファを格納して返却するので、解放必須です
-LPTSTR GetConfigPath(LPTSTR fileName=L"config.ini")
-{
-	LPTSTR lpExecDirectory = (LPTSTR)::GlobalAlloc(GMEM_FIXED, MAX_PATH * sizeof(TCHAR));
-	if( ::GetExecuteDirectory(lpExecDirectory, MAX_PATH) ) {
-		LPTSTR lpConfigPath = sprintf_alloc(L"%s%s", lpExecDirectory, fileName);
-		::GlobalFree(lpExecDirectory);
-		return lpConfigPath;
-	} else {
-		::GlobalFree(lpExecDirectory);
-		::ShowLastError();
-		return NULL;
-	}
-}
-
-void GetPrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath)
-{
-	LPTSTR key = ::sprintf_alloc(L"%s.key", baseKeyName);
-	LPTSTR ctrl = ::sprintf_alloc(L"%s.ctrlKey", baseKeyName);
-	LPTSTR shift = ::sprintf_alloc(L"%s.shiftKey", baseKeyName);
-	LPTSTR alt = ::sprintf_alloc(L"%s.altKey", baseKeyName);
-
-	keyInfo->key		= ::GetPrivateProfileInt(section, key, keyInfo->key, configPath);
-	keyInfo->ctrlKey	= ::GetPrivateProfileInt(section, ctrl, keyInfo->ctrlKey, configPath);
-	keyInfo->shiftKey	= ::GetPrivateProfileInt(section, shift, keyInfo->shiftKey, configPath);
-	keyInfo->altKey		= ::GetPrivateProfileInt(section, alt, keyInfo->altKey, configPath);
-
-	::GlobalFree(key);
-	::GlobalFree(ctrl);
-	::GlobalFree(shift);
-	::GlobalFree(alt);
-}
-
-void WritePrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath)
-{
-	LPTSTR key = ::sprintf_alloc(L"%s.key", baseKeyName);
-	LPTSTR ctrl = ::sprintf_alloc(L"%s.ctrlKey", baseKeyName);
-	LPTSTR shift = ::sprintf_alloc(L"%s.shiftKey", baseKeyName);
-	LPTSTR alt = ::sprintf_alloc(L"%s.altKey", baseKeyName);
-
-	::WritePrivateProfileInt(section, key, keyInfo->key, configPath);
-	::WritePrivateProfileInt(section, ctrl, keyInfo->ctrlKey, configPath);
-	::WritePrivateProfileInt(section, shift, keyInfo->shiftKey, configPath);
-	::WritePrivateProfileInt(section, alt, keyInfo->altKey, configPath);
-
-	::GlobalFree(key);
-	::GlobalFree(ctrl);
-	::GlobalFree(shift);
-	::GlobalFree(alt);
-}
+#define CONFIG_FILENAME L"config.ini"
 
 void LoadConfig()
 {
 	LPTSTR lpConfigPath = NULL;
 	
 	__try{
-		lpConfigPath = ::GetConfigPath();
+		lpConfigPath = ::GetConfigPath(CONFIG_FILENAME);
 
 		// setup default key config
 		::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);
@@ -198,7 +84,7 @@ void SaveConfig()
 	LPTSTR lpConfigPath = NULL;
 	
 	__try{
-		lpConfigPath = ::GetConfigPath();
+		lpConfigPath = ::GetConfigPath(CONFIG_FILENAME);
 
 		// save keyconfig
 		::WritePrivateProfileKeyInfo(L"KeyBind", L"g_activeSSKeyInfo", &::g_activeSSKeyInfo, lpConfigPath);
@@ -693,13 +579,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HANDLE_MSG(hWnd, WM_COMMAND, OnCommand);
 		HANDLE_MSG(hWnd, WM_CLOSE, OnClose);
 
-	case WM_CREATE:
+	case WM_CREATE:		
 		// 設定ファイル読み込み
 		LoadConfig();
-
-		// キーショートカットの初期状態読み込み
-		// ::QuickSetKeyInfo(&::g_activeSSKeyInfo, KEY_NOT_SET, VK_F9);	// CTRL + F9
-		// ::QuickSetKeyInfo(&::g_desktopSSKeyInfo, VK_CONTROL, VK_F9);	// ALT + F9
 
 		// キーボード設定
 		::SetWindowHandle(hWnd);

@@ -16,6 +16,8 @@
 #include <math.h>
 #include <string>
 
+#include "KeyHook.h"
+
 // ダイアログ用のメッセージクラッカー
 #define HANDLE_DLG_MSG(hwnd, msg, fn) \
     case(msg): \
@@ -23,8 +25,13 @@
 
 #define SLIDER_GETPOS(lp) (::SendMessage((HWND)lp, TBM_GETPOS, 0, 0))
 
-#define DLLIMPORT extern "C" __declspec(dllimport)
-#define DLLEXPORT extern "C" __declspec(dllimport)
+#ifndef DLLIMPORT
+	#define DLLIMPORT extern "C" __declspec(dllimport)
+#endif
+
+#ifndef DLLEXPORT
+	#define DLLEXPORT extern "C" __declspec(dllimport)
+#endif
 
 void trace(LPCTSTR format, ...);
 void FillRectBrush(HDC hdc, int x, int y, int width, int height, COLORREF color);
@@ -76,6 +83,11 @@ HWND WindowFromCursorPos();
 void NoticeRedraw(HWND hWnd);
 void RectangleNormalize(RECT *rect);
 std::wstring str2wstr(std::string str);
+LPTSTR GetConfigPath(LPTSTR fileName);
+void GetPrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath);
+void WritePrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath);
+void QuickSetKeyInfo(KEYINFO *info, int optKey, int key);
+LPTSTR GetKeyInfoString(KEYINFO *keyInfo);
 
 // 多重起動防止用簡易クラス
 #include <exception>
