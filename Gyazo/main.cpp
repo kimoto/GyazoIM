@@ -10,6 +10,9 @@
 #include "KeyHook.h"
 #pragma comment(lib, "KeyHook.lib")
 
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+
 // デバッグとして保存先をDesktopにする
 // ファイル名は{日付時間}.png
 #define DEBUG_LOCAL_SAVE
@@ -52,6 +55,9 @@ RECT mouseSelectedArea = {0};	// マウスによって選択されている領域
 
 // ドラッグ中状態管理
 BOOL bDrag = FALSE; 
+
+LPCTSTR layer1WindowClass = L"GyazoIM_Layer1";
+LPCTSTR layer2WindowClass = L"GyazoIM_Layer2";
 
 ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
@@ -226,6 +232,7 @@ LRESULT CALLBACK SelectedAreaWndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
 			::DeleteObject(selectedAreaFont);
 		break;
 	case WM_PAINT:
+		return TRUE;
 		// 選択領域全体を塗りつぶすと同時に
 		// 右下に大きさを表示します
 		PAINTSTRUCT ps;
@@ -233,7 +240,7 @@ LRESULT CALLBACK SelectedAreaWndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
 
 		// 一旦全部クライアント領域を初期化
 		RECT rect;
-		::GetClientRect(hWnd, &rect);
+		::GetWindowRect(hWnd, &rect);
 		::FillRectBrush(hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, RGB(255,0,0));
 
 		if(bDrag){
@@ -284,41 +291,42 @@ BOOL StartCapture()
 {
 	RECT rect;
 	::GetWindowRect(::GetDesktopWindow(), &rect);
-
+	
+	// get full screen size
+	int w,h,x,y;
+	w = rect.right - rect.left;
+	h = rect.bottom - rect.top;
+	x = rect.left;
+	y = rect.top;
+	
 	// ただの透明なウインドウ
 	// マウスイベントを受け取ったりします
 	HWND hLayerWnd = CreateWindowEx(
-		WS_EX_LAYERED,
-		L"Layerd", L"Layerd", WS_POPUP,
-		rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-		NULL, NULL, g_hInstance, NULL);
-	if(!hLayerWnd){
-		::ShowLastError();
-		return FALSE;
-	}
+		WS_EX_TRANSPARENT | WS_EX_TOPMOST,
+		::layer1WindowClass, ::layer1WindowClass, WS_POPUP,
+		x, y, w, h, NULL, NULL, g_hInstance, NULL);
 	::SetForegroundWindow(hLayerWnd);
-	::SetLayeredWindowAttributes(hLayerWnd, 0, 1, LWA_ALPHA);
 
 	// 選択領域を描画するためだけの透明ウインドウ
 	HWND hSelectedArea = CreateWindowEx(
-		WS_EX_LAYERED | WS_EX_TRANSPARENT,
-		L"Layerd2", L"Layerd2", WS_POPUP,
-		0, 0, rect.right - rect.left, rect.bottom - rect.top,
-		NULL, NULL, g_hInstance, NULL);
-	::SetForegroundWindow(hSelectedArea);
-	SetLayeredWindowAttributes(hSelectedArea, RGB(255,0,0), 100, LWA_COLORKEY | LWA_ALPHA);
-
-	if(!hSelectedArea){
-		::ShowLastError();
-		return FALSE;
-	}
+		WS_EX_LAYERED,
+		::layer2WindowClass, ::layer2WindowClass, WS_POPUP,
+		x, y, w, h, NULL, NULL, g_hInstance, NULL);
+	//SetLayeredWindowAttributes(hSelectedArea, RGB(255,0,0), 100, LWA_COLORKEY | LWA_ALPHA);	// 赤単色を
+	SetLayeredWindowAttributes(hSelectedArea, RGB(255,0,0), 100, LWA_ALPHA | LWA_COLORKEY);	// 赤単色を
 	g_hSelectedArea = hSelectedArea;
+	
+	// ウインドウの順列を設定
+	// layer1(mouse event) -> layer2 -> desktopって感じ
+	::SetForegroundWindow(hSelectedArea);
+	::SetForegroundWindow(hLayerWnd);
+	
+	// ウインドウを表示します
+	::ShowWindow(hLayerWnd, SW_SHOW);
+	::UpdateWindow(hLayerWnd);
 
 	::ShowWindow(hSelectedArea, SW_SHOW);
 	::UpdateWindow(hSelectedArea);
-	
-	::ShowWindow(hLayerWnd, SW_SHOW);
-	::UpdateWindow(hLayerWnd);
 	return FALSE;
 }
 
@@ -579,7 +587,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HANDLE_MSG(hWnd, WM_COMMAND, OnCommand);
 		HANDLE_MSG(hWnd, WM_CLOSE, OnClose);
 
-	case WM_CREATE:		
+	case WM_CREATE:
+		// デスクトップコンポジションの無効化
+		if( FAILED(::DwmEnableComposition(DWM_EC_DISABLECOMPOSITION)) ){
+			::ShowLastError();
+			return FALSE;
+		}
+
 		// 設定ファイル読み込み
 		LoadConfig();
 
@@ -680,7 +694,22 @@ void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
 
 void Layer_OnPaint(HWND hWnd)
 {
+	/*
+	PAINTSTRUCT ps;
+	HDC hdc = ::BeginPaint(hWnd, &ps);
+	
+	RECT rect;
+	::GetClientRect(hWnd, &rect);
+	HBRUSH brush = ::CreateSolidBrush(RGB(255,0,0));
+	::FillRect(hdc, &rect, brush);
+	::DeleteObject(brush);
+
+	::EndPaint(hWnd, &ps);
+	*/
+
 	if(bDrag){
+		trace(L"layer_onPaint\n");
+		/*
 		PAINTSTRUCT ps;
 		HDC hdc = ::BeginPaint(hWnd, &ps);
 
@@ -692,6 +721,7 @@ void Layer_OnPaint(HWND hWnd)
 			mouseSelectedArea.bottom - mouseSelectedArea.top, RGB(0,0,0));
 
 		::EndPaint(hWnd, &ps);
+					*/
 	}
 }
 
@@ -702,6 +732,9 @@ LRESULT CALLBACK LayerWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
 		HANDLE_MSG(hWnd, WM_LBUTTONDOWN, Layer_OnMouseLButtonDown);
 		HANDLE_MSG(hWnd, WM_LBUTTONUP, Layer_OnMouseLButtonUp);
 		HANDLE_MSG(hWnd, WM_PAINT, Layer_OnPaint);
+
+	case WM_ERASEBKGND: // 背景の初期化のための描画を無効化、これによって一瞬ちらつかなくなる
+		return FALSE;
 	}
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }
@@ -747,7 +780,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	WNDCLASSEX wcex;
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	//wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.style = CS_DBLCLKS;
+	wcex.style = 0;
 	wcex.lpfnWndProc = WndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
@@ -760,7 +793,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hIconSm = ::LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MAIN));
 	RegisterClassEx(&wcex);
 
-	wcex.style = CS_DBLCLKS;
+	wcex.style = 0;
 	wcex.lpfnWndProc = LayerWndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
@@ -769,11 +802,11 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	wcex.lpszMenuName = NULL;
-	wcex.lpszClassName = L"Layerd";
+	wcex.lpszClassName = ::layer1WindowClass;
 	wcex.hIconSm = ::LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MAIN));
 	RegisterClassEx(&wcex);
 	
-	wcex.style = CS_DBLCLKS;
+	wcex.style = 0;
 	wcex.lpfnWndProc = SelectedAreaWndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
@@ -782,7 +815,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	wcex.lpszMenuName = NULL;
-	wcex.lpszClassName = L"Layerd2";
+	wcex.lpszClassName = ::layer2WindowClass;
 	wcex.hIconSm = ::LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MAIN));
 	return RegisterClassEx(&wcex);
 }
