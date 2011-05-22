@@ -101,34 +101,6 @@ void SaveConfig()
 	}
 }
 
-// 指定されたウインドウを強調します
-BOOL HighlightWindow(HWND hWnd)
-{
-	HDC hdc = ::GetWindowDC(hWnd);
-	if(hdc == NULL){
-		return FALSE;
-	}
-
-	HPEN hPen = CreatePen(PS_SOLID, 5, RGB(255, 0, 0));
-	HBRUSH hBrush = (HBRUSH)::GetStockObject(HOLLOW_BRUSH);
-
-	HGDIOBJ hPrevPen = ::SelectObject(hdc, hPen);
-	HGDIOBJ hPrevBrush = ::SelectObject(hdc, hBrush);
-	
-	RECT rect;
-	::GetWindowRect(hWnd, &rect);
-	::Rectangle(hdc, 0, 0, rect.right - rect.left, rect.bottom - rect.top);
-
-	::SelectObject(hdc, hPrevPen);
-	::SelectObject(hdc, hPrevBrush);
-
-	::DeleteObject(hPen);
-	::DeleteObject(hBrush);
-
-	::ReleaseDC(hWnd, hdc);
-	return TRUE;
-}
-
 // Desktopの指定した範囲をキャプチャしてアップロード
 void ScreenShotAndUpload(HWND forErrorMessage, LPCTSTR path, RECT *rect)
 {
@@ -182,8 +154,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wp, LPARAM lp)
 // インスペクトモード開始
 BOOL StartInspect()
 {
-	g_hook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, g_hInstance, 0);
-	if(!g_hook){
+	if( !::StartMouseEventProxy(::g_hWnd, ::g_hInstance) ){
 		::ShowLastError();
 		return FALSE;
 	}
@@ -194,13 +165,11 @@ BOOL StartInspect()
 // インスペクトモード無効
 BOOL StopInspect()
 {
-	if(g_hook){
-		if( !::UnhookWindowsHookEx(g_hook) ){
-			::ShowLastError();
-			return FALSE;
-		}
-		g_hook = NULL;
+	if( !::StopMouseEventProxy() ){
+		::ShowLastError();
+		return FALSE;
 	}
+
 	bStartCapture = FALSE;
 	return TRUE;
 }
@@ -694,34 +663,8 @@ void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
 
 void Layer_OnPaint(HWND hWnd)
 {
-	/*
-	PAINTSTRUCT ps;
-	HDC hdc = ::BeginPaint(hWnd, &ps);
-	
-	RECT rect;
-	::GetClientRect(hWnd, &rect);
-	HBRUSH brush = ::CreateSolidBrush(RGB(255,0,0));
-	::FillRect(hdc, &rect, brush);
-	::DeleteObject(brush);
-
-	::EndPaint(hWnd, &ps);
-	*/
-
 	if(bDrag){
 		trace(L"layer_onPaint\n");
-		/*
-		PAINTSTRUCT ps;
-		HDC hdc = ::BeginPaint(hWnd, &ps);
-
-		RECT rect;
-		::GetWindowRect(hWnd, &rect);
-		::FillRectBrush(hdc, 0, 0, rect.right - rect.left, rect.bottom - rect.top, RGB(255,255,255));
-		::FillRectBrush(hdc, mouseSelectedArea.left, mouseSelectedArea.top,
-			mouseSelectedArea.right - mouseSelectedArea.left,
-			mouseSelectedArea.bottom - mouseSelectedArea.top, RGB(0,0,0));
-
-		::EndPaint(hWnd, &ps);
-					*/
 	}
 }
 
@@ -744,21 +687,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	// TODO: ここにコードを挿入してください。
 	MSG msg;
 
-	// グローバル文字列を初期化しています。
 	MyRegisterClass(hInstance);
-
+	
 	// 多重起動防止
-	CMutex mutex;
-	try{
-		mutex.createMutex(MUTEX_NAME);
-	}catch(std::exception e){
-		::ErrorMessageBox(L"多重起動です");
-		exit(0);
-	}
-
+	::DuplicateBootCheck(MUTEX_NAME);
+	
 	// アプリケーションの初期化を実行します:
 	if (!InitInstance (hInstance, nCmdShow)){
 		return FALSE;

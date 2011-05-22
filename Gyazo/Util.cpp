@@ -15,13 +15,15 @@ LPVOID GlobalAllocHeap(UINT flags, SIZE_T size)
 
 void trace(LPCTSTR format, ...)
 {
+#ifdef _DEBUG
 	va_list arg;
 	va_start(arg, format);
 	
 	TCHAR buffer[TRACE_BUFFER_SIZE];
-	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, TRACE_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, _TRUNCATE, format, arg);
 	::OutputDebugString(buffer);	
 	va_end(arg);
+#endif
 }
 
 void DrawFormatText(HDC hdc, LPRECT rect, UINT type, LPCTSTR format, ...)
@@ -30,7 +32,7 @@ void DrawFormatText(HDC hdc, LPRECT rect, UINT type, LPCTSTR format, ...)
 	va_start(arg, format);
 	
 	TCHAR buffer[TRACE_BUFFER_SIZE];
-	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, TRACE_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, _TRUNCATE, format, arg);
 	::DrawText(hdc, buffer, lstrlen(buffer), rect, type);	
 	va_end(arg);
 }
@@ -41,7 +43,7 @@ void TextFormatOut(HDC hdc, int x, int y, LPCTSTR format, ...)
 	va_start(arg, format);
 	
 	TCHAR buffer[FORMAT_BUFFER_SIZE];
-	::_vsnwprintf_s(buffer, FORMAT_BUFFER_SIZE, FORMAT_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, FORMAT_BUFFER_SIZE, _TRUNCATE, format, arg);
 	::TextOut(hdc, x, y, buffer, lstrlen(buffer));
 	va_end(arg);
 }
@@ -456,7 +458,7 @@ void ErrorMessageBox(LPCTSTR format, ...)
 	va_start(arg, format);
 
 	TCHAR buffer[TRACE_BUFFER_SIZE];
-	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, TRACE_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, _TRUNCATE, format, arg);
 	::MessageBox(NULL, buffer, L"Error", MB_OK);
 	va_end(arg);
 }
@@ -553,7 +555,7 @@ BOOL SetGamma(double gamma)
 
 BOOL SetWindowTopMost(HWND hWnd)
 {
-	return ::SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOSENDCHANGING);
+	return SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW|SWP_NOMOVE|SWP_NOSIZE);
 }
 
 LPTSTR sprintf_alloc(LPTSTR format, ...)
@@ -562,7 +564,7 @@ LPTSTR sprintf_alloc(LPTSTR format, ...)
 	va_start(arg, format);
 	
 	LPTSTR buffer = (LPTSTR)::GlobalAllocHeap(GMEM_FIXED | GMEM_ZEROINIT, TRACE_BUFFER_SIZE * sizeof(TCHAR));
-	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, TRACE_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, _TRUNCATE, format, arg);
 	va_end(arg);
 
 	return buffer;
@@ -574,7 +576,7 @@ BOOL SetWindowTextFormat(HWND hWnd, LPTSTR format, ...)
 	va_start(arg, format);
 
 	TCHAR buffer[TRACE_BUFFER_SIZE];
-	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, TRACE_BUFFER_SIZE, format, arg);
+	::_vsnwprintf_s(buffer, TRACE_BUFFER_SIZE, _TRUNCATE, format, arg);
 	::SetWindowText(hWnd, buffer);
 	va_end(arg);
 
@@ -907,4 +909,198 @@ LPTSTR GetKeyInfoString(KEYINFO *keyInfo)
 	::GlobalFree(shift);
 	::GlobalFree(key);
 	return buffer;
+}
+
+HHOOK g_mouseProxyHook = NULL;
+HWND g_mouseProxyHwnd = NULL;
+LRESULT CALLBACK MouseEventProxyHook(int nCode, WPARAM wp, LPARAM lp)
+{
+	if( nCode < 0 ) //nCodeが負、HC_NOREMOVEの時は何もしない
+		return CallNextHookEx(g_mouseProxyHook, nCode, wp, lp );
+
+	if( nCode == HC_ACTION){
+		MSLLHOOKSTRUCT *msg = (MSLLHOOKSTRUCT *)lp;
+		if( wp == WM_MOUSEMOVE ){
+			::PostMessage(g_mouseProxyHwnd, wp, 0, MAKELPARAM(msg->pt.x, msg->pt.y));
+			return CallNextHookEx(::g_mouseProxyHook, nCode, 0, lp);
+		}
+
+		if( wp == WM_LBUTTONDOWN || wp == WM_LBUTTONUP ||
+			wp == WM_RBUTTONDOWN || wp == WM_RBUTTONUP ){
+				::PostMessage(g_mouseProxyHwnd, wp, 0, MAKELPARAM(msg->pt.x, msg->pt.y));
+				return TRUE;
+		}
+	}
+	return CallNextHookEx(::g_mouseProxyHook, nCode, 0, lp);
+}
+
+BOOL StartMouseEventProxy(HWND hWnd, HINSTANCE hInstance)
+{
+	::g_mouseProxyHwnd = hWnd;
+	::g_mouseProxyHook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseEventProxyHook, hInstance, 0);
+	if(!::g_mouseProxyHook){
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL StopMouseEventProxy()
+{
+	if(g_mouseProxyHook){
+		if(!UnhookWindowsHookEx(g_mouseProxyHook)){
+			return FALSE;
+		}
+		g_mouseProxyHook = NULL;
+	}
+	::g_mouseProxyHwnd = NULL;
+	return TRUE;
+}
+
+BOOL HighlightWindow(HWND hWnd, int bold, COLORREF color)
+{
+	HDC hdc = ::GetWindowDC(hWnd);
+	if(hdc == NULL){
+		return FALSE;
+	}
+
+	HPEN hPen = CreatePen(PS_SOLID, bold, color);
+	HBRUSH hBrush = (HBRUSH)::GetStockObject(HOLLOW_BRUSH);
+
+	HGDIOBJ hPrevPen = ::SelectObject(hdc, hPen);
+	HGDIOBJ hPrevBrush = ::SelectObject(hdc, hBrush);
+
+	RECT rect;
+	::GetWindowRect(hWnd, &rect);
+	::Rectangle(hdc, 0, 0, rect.right - rect.left, rect.bottom - rect.top);
+
+	::SelectObject(hdc, hPrevPen);
+	::SelectObject(hdc, hPrevBrush);
+
+	::DeleteObject(hPen);
+	::DeleteObject(hBrush);
+
+	::ReleaseDC(hWnd, hdc);
+	return TRUE;
+}
+
+BOOL HighlightWindow(HWND hWnd)
+{
+	return ::HighlightWindow(hWnd, 5, RGB(0,0,0));
+}
+
+void DuplicateBootCheck(LPCTSTR mutexName)
+{
+	CMutex mutex;
+	try{
+		mutex.createMutex(mutexName);
+	}catch(std::exception e){
+		::ErrorMessageBox(L"多重起動です");
+		exit(0);
+	}
+}
+
+void ShadowTextFormatOut(HDC hdc, int x, int y, int w, COLORREF shadow, COLORREF color, LPCTSTR format, ...)
+{
+	va_list arg;
+	va_start(arg, format);
+
+	TCHAR buffer[256];
+	::SetBkMode(hdc, TRANSPARENT);
+	::_vsnwprintf_s(buffer, 256, _TRUNCATE, format, arg);
+
+	// 影の描画
+	::SetTextColor(hdc, shadow);
+	::TextOut(hdc, x + w, y + w, buffer, lstrlen(buffer));
+
+	// 本体の描画
+	::SetTextColor(hdc, color);
+	::TextOut(hdc, x, y, buffer, lstrlen(buffer));
+
+	va_end(arg);
+}
+
+
+void StickRect(RECT *selected, RECT *target, int w_px, int h_px)
+{
+	// 左側
+	if(target->left <= selected->left && selected->left <= w_px){
+		selected->right = target->left + (selected->right - selected->left);
+		selected->left = target->left;
+	}
+	// 上側
+	if(target->top <= selected->top && selected->top <= h_px){
+		selected->bottom = target->top + (selected->bottom - selected->top);
+		selected->top = target->top;
+	}
+	// 下側
+	if(target->bottom - h_px <= selected->bottom && selected->bottom <= target->bottom){
+		selected->top = target->bottom - (selected->bottom - selected->top);
+		selected->bottom = target->bottom;
+	}
+	// 右側
+	if(target->right - w_px <= selected->right && selected->right <= target->right){
+		selected->left = target->right - (selected->right - selected->left);
+		selected->right = target->right;
+	}
+
+	// 上下反転したときの上側
+	if(selected->bottom < target->top + h_px){
+		selected->top = target->top + (selected->top - selected->bottom);
+		selected->bottom = target->top;
+	}
+	// 上下反転したときの下側
+	if(target->bottom - h_px <= selected->top){
+		selected->bottom = target->bottom - (selected->top - selected->bottom);
+		selected->top = target->bottom;
+	}
+	// 左右反転したときの左側
+	if(selected->right < target->left + w_px){
+		selected->left = selected->left - selected->right;
+		selected->right = target->left;
+	}
+	// 左右反転したときの右側
+	if(target->right - w_px < selected->left){
+		selected->right = target->right - (selected->left - selected->right);
+		selected->left = target->right;
+	}
+}
+
+// 指定されたウインドウ範囲から出られなくします
+void CorrectRect(RECT *selected, RECT *target)
+{
+	// 左側
+	if(selected->left < target->left){
+		selected->right = target->left + (selected->right - selected->left);
+		selected->left = target->left;
+	}
+	// 上側
+	if(selected->top < target->top){
+		selected->bottom = target->top + (selected->bottom - selected->top);
+		selected->top = target->top;
+	}
+	// 右側
+	// ...
+
+	// 右側(逆版)
+	if(selected->left > target->right){
+		int w = selected->left - selected->right;
+		selected->left = target->right;
+		selected->right = selected->left - w;
+	}
+
+	// 下側
+	/*
+	if(selected->bottom > target->bottom){
+	int h = selected->bottom - selected->top;
+	selected->bottom = target->bottom;
+	selected->top = selected->bottom - h;
+	}
+	*/
+
+	// 下側(逆版)
+	if(selected->top > target->bottom){
+		int h = selected->top - selected->bottom;
+		selected->top = target->bottom;
+		selected->bottom = selected->top - h;
+	}
 }

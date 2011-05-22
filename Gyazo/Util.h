@@ -17,6 +17,7 @@
 #include <string>
 
 #include "KeyHook.h"
+#pragma comment(lib, "KeyHook.lib")
 
 // ダイアログ用のメッセージクラッカー
 #define HANDLE_DLG_MSG(hwnd, msg, fn) \
@@ -32,6 +33,10 @@
 #ifndef DLLEXPORT
 	#define DLLEXPORT extern "C" __declspec(dllimport)
 #endif
+
+#define DUPLICATE_BOOT_CHECK(MUTEX_NAME) DuplicateBootCheck(MUTEX_NAME)
+
+#define SafeDeleteObject(gdiobj) gdiobj != NULL && ::DeleteObject(gdiobj)
 
 void trace(LPCTSTR format, ...);
 void FillRectBrush(HDC hdc, int x, int y, int width, int height, COLORREF color);
@@ -88,6 +93,22 @@ void GetPrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *key
 void WritePrivateProfileKeyInfo(LPCTSTR section, LPCTSTR baseKeyName, KEYINFO *keyInfo, LPCTSTR configPath);
 void QuickSetKeyInfo(KEYINFO *info, int optKey, int key);
 LPTSTR GetKeyInfoString(KEYINFO *keyInfo);
+
+// mouse proxy
+LRESULT CALLBACK MouseEventProxyHook(int nCode, WPARAM wp, LPARAM lp);
+BOOL StartMouseEventProxy(HWND hWnd, HINSTANCE hInstance);
+BOOL StopMouseEventProxy();
+
+// window manipulate
+BOOL HighlightWindow(HWND hWnd, int bold, COLORREF color);
+BOOL HighlightWindow(HWND hWnd);
+
+void DuplicateBootCheck(LPCTSTR mutexName);
+
+void ShadowTextFormatOut(HDC hdc, int x, int y, int w, COLORREF shadow, COLORREF color, LPCTSTR format, ...);
+
+void StickRect(RECT *selected, RECT *target, int w_px, int h_px);
+void CorrectRect(RECT *selected, RECT *target);
 
 // 多重起動防止用簡易クラス
 #include <exception>
