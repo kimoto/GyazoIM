@@ -1104,3 +1104,34 @@ void CorrectRect(RECT *selected, RECT *target)
 		selected->bottom = selected->top - h;
 	}
 }
+
+// 指定されたファイルを、拡張子に関連付けられたプログラムで開きます
+void ExecuteFile(HWND hWnd, LPCTSTR filePath)
+{
+	SHELLEXECUTEINFO sei = {0};
+	sei.cbSize = sizeof(SHELLEXECUTEINFO);
+	sei.hwnd = hWnd;
+	sei.nShow = SW_SHOWNORMAL;
+	sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+	sei.lpFile = filePath;
+	ShellExecuteEx(&sei);
+}
+
+// 手軽にフォント作成する関数
+HFONT QuickCreateFont(int px, LPTSTR fontName)
+{
+	return CreateFont(px,    //フォント高さ
+		0,                    //文字幅
+		0,                    //テキストの角度
+		0,                    //ベースラインとｘ軸との角度
+		FW_REGULAR,            //フォントの重さ（太さ）
+		FALSE,                //イタリック体
+		FALSE,                //アンダーライン
+		FALSE,                //打ち消し線
+		ANSI_CHARSET,    //文字セット
+		OUT_DEFAULT_PRECIS,    //出力精度
+		CLIP_DEFAULT_PRECIS,//クリッピング精度
+		PROOF_QUALITY,        //出力品質
+		FIXED_PITCH | FF_MODERN,//ピッチとファミリー
+		fontName);    //書体名
+}

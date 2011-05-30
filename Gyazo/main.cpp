@@ -54,7 +54,7 @@ POINT mouseReleasedPt = {0};	// マウスを離した場所(終点)
 RECT mouseSelectedArea = {0};	// マウスによって選択されている領域
 
 // ドラッグ中状態管理
-BOOL bDrag = FALSE; 
+//BOOL bDrag = FALSE; 
 
 LPCTSTR layer1WindowClass = L"GyazoIM_Layer1";
 LPCTSTR layer2WindowClass = L"GyazoIM_Layer2";
@@ -63,8 +63,10 @@ ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
+// ===========================================
+//	設定ファイル操作系関数
+// ===========================================
 #define CONFIG_FILENAME L"config.ini"
-
 void LoadConfig()
 {
 	LPTSTR lpConfigPath = NULL;
@@ -101,12 +103,18 @@ void SaveConfig()
 	}
 }
 
+
+// ===========================================
+//	スクリーンショット撮影簡略化系
+// ===========================================
 // Desktopの指定した範囲をキャプチャしてアップロード
 void ScreenShotAndUpload(HWND forErrorMessage, LPCTSTR path, RECT *rect)
 {
 	try{
 		::Screenshot::ScreenshotDesktop(path, rect);
 		::MessageBeep(MB_ICONASTERISK); // 撮影音をこの時点で出す
+		
+		//::ExecuteFile(g_hWnd, path);
 
 		Gyazo *g = new Gyazo();
 		g->UploadFileAndOpenURL(forErrorMessage, path);
@@ -132,25 +140,9 @@ void ScreenShotAndUpload_Desktop(HWND forErrorMessage, LPCTSTR path)
 	ScreenShotAndUpload(forErrorMessage, path, &rect);
 }
 
-LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wp, LPARAM lp)
-{
-	if( nCode < 0 ) //nCodeが負、HC_NOREMOVEの時は何もしない
-		return CallNextHookEx( g_hook, nCode, wp, lp );
-
-	if( nCode == HC_ACTION){
-		MSLLHOOKSTRUCT *msg = (MSLLHOOKSTRUCT *)lp;
-		if( wp == WM_MOUSEMOVE || wp == WM_LBUTTONDOWN ){
-			::PostMessage(g_hWnd, wp, 0, MAKELPARAM(msg->pt.x, msg->pt.y));
-		}else if( wp == WM_RBUTTONDOWN ){
-			return TRUE;
-		}else if( wp == WM_RBUTTONUP ){
-			::PostMessage(g_hWnd, WM_RBUTTONDOWN, 0, MAKELPARAM(msg->pt.x, msg->pt.y));
-			return TRUE;
-		}
-	}
-	return CallNextHookEx(g_hook, nCode, 0, lp);
-}
-
+// ===========================================
+//	GUIイベント系(インスペクトモード)
+// ===========================================
 // インスペクトモード開始
 BOOL StartInspect()
 {
@@ -174,136 +166,9 @@ BOOL StopInspect()
 	return TRUE;
 }
 
-LRESULT CALLBACK SelectedAreaWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	static HFONT selectedAreaFont = NULL;
-
-	switch(message){
-	case WM_CREATE:
-		selectedAreaFont = CreateFont(18,    //フォント高さ
-			0,                    //文字幅
-			0,                    //テキストの角度
-			0,                    //ベースラインとｘ軸との角度
-			FW_REGULAR,            //フォントの重さ（太さ）
-			FALSE,                //イタリック体
-			FALSE,                //アンダーライン
-			FALSE,                //打ち消し線
-			ANSI_CHARSET,    //文字セット
-			OUT_DEFAULT_PRECIS,    //出力精度
-			CLIP_DEFAULT_PRECIS,//クリッピング精度
-			PROOF_QUALITY,        //出力品質
-			FIXED_PITCH | FF_MODERN,//ピッチとファミリー
-			CURSOR_FONT);    //書体名
-		break;
-	case WM_CLOSE:
-	case WM_DESTROY:
-		if(selectedAreaFont)
-			::DeleteObject(selectedAreaFont);
-		break;
-	case WM_PAINT:
-		return TRUE;
-		// 選択領域全体を塗りつぶすと同時に
-		// 右下に大きさを表示します
-		PAINTSTRUCT ps;
-		HDC hdc = ::BeginPaint(hWnd, &ps);
-
-		// 一旦全部クライアント領域を初期化
-		RECT rect;
-		::GetWindowRect(hWnd, &rect);
-		::FillRectBrush(hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, RGB(255,0,0));
-
-		if(bDrag){
-			HFONT hOldFont = SelectFont(hdc, selectedAreaFont);
-
-			// 枠付きの四角形を描画
-			HBRUSH hBrush = ::CreateSolidBrush(RGB(100,100,100));
-			HBRUSH hOldBrush = (HBRUSH)::SelectObject(hdc, hBrush);
-
-			HPEN hPen = ::CreatePen(PS_DASH, 1, RGB(255,255,255));
-			HPEN hOldPen = (HPEN)::SelectObject(hdc, hPen);
-			
-			rect = mouseSelectedArea;
-			::Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
-
-			// 取り込み範囲表示
-			::SetBkMode(hdc, TRANSPARENT);
-			TCHAR buf[256];
-			::wsprintf(buf, L"%d,%d", rect.right - rect.left, rect.bottom - rect.top);
-
-			// 影の描画
-			::SetTextColor(hdc, RGB(0,0,0));
-			::TextOut(hdc, rect.left+2, rect.top+2, buf, lstrlen(buf));
-
-			// 本体の描画
-			::SetTextColor(hdc, RGB(255,255,255));
-			::TextOut(hdc, rect.left, rect.top, buf, lstrlen(buf));
-
-			// 戻す
-			SelectFont(hdc, hOldFont);
-			SelectPen(hdc, hOldPen);
-			SelectBrush(hdc, hOldBrush);
-
-			// 使用したオブジェクトの破棄
-			::DeleteObject(hBrush);
-			::DeleteObject(hPen);
-		}
-
-		::EndPaint(hWnd, &ps);
-		::ReleaseDC(hWnd, hdc);
-		break;
-	}
-	return ::DefWindowProc(hWnd, message, wParam, lParam);
-}
-
-// キャプチャモード開始
-BOOL StartCapture()
-{
-	RECT rect;
-	::GetWindowRect(::GetDesktopWindow(), &rect);
-	
-	// get full screen size
-	int w,h,x,y;
-	w = rect.right - rect.left;
-	h = rect.bottom - rect.top;
-	x = rect.left;
-	y = rect.top;
-	
-	// ただの透明なウインドウ
-	// マウスイベントを受け取ったりします
-	HWND hLayerWnd = CreateWindowEx(
-		WS_EX_TRANSPARENT | WS_EX_TOPMOST,
-		::layer1WindowClass, ::layer1WindowClass, WS_POPUP,
-		x, y, w, h, NULL, NULL, g_hInstance, NULL);
-	::SetForegroundWindow(hLayerWnd);
-
-	// 選択領域を描画するためだけの透明ウインドウ
-	HWND hSelectedArea = CreateWindowEx(
-		WS_EX_LAYERED,
-		::layer2WindowClass, ::layer2WindowClass, WS_POPUP,
-		x, y, w, h, NULL, NULL, g_hInstance, NULL);
-	//SetLayeredWindowAttributes(hSelectedArea, RGB(255,0,0), 100, LWA_COLORKEY | LWA_ALPHA);	// 赤単色を
-	SetLayeredWindowAttributes(hSelectedArea, RGB(255,0,0), 100, LWA_ALPHA | LWA_COLORKEY);	// 赤単色を
-	g_hSelectedArea = hSelectedArea;
-	
-	// ウインドウの順列を設定
-	// layer1(mouse event) -> layer2 -> desktopって感じ
-	::SetForegroundWindow(hSelectedArea);
-	::SetForegroundWindow(hLayerWnd);
-	
-	// ウインドウを表示します
-	::ShowWindow(hLayerWnd, SW_SHOW);
-	::UpdateWindow(hLayerWnd);
-
-	::ShowWindow(hSelectedArea, SW_SHOW);
-	::UpdateWindow(hSelectedArea);
-	return FALSE;
-}
-
-BOOL StopCapture()
-{
-	return FALSE;
-}
-
+// ===========================================
+//	GUIイベント系(キャプチャモード)
+// ===========================================
 void OnMouseMove(HWND hwnd, int x, int y, UINT keyFlags)
 {
 	if(::bStartCapture) { // Inspectモードの間違い
@@ -352,6 +217,343 @@ void OnDestroy(HWND hWnd)
 	::PostQuitMessage(0);
 }
 
+
+HDC g_hMemDC = NULL;
+BOOL bNormalize = FALSE;
+BOOL bStick = FALSE;
+#define CAPTURE_MIN_WIDTH 10
+#define CAPTURE_MIN_HEIGHT 10
+RECT selected = {0};
+POINT mousePressed = {0};
+POINT mousePressedR = {0};
+RECT lastSelected = {0};
+BOOL bCapture = FALSE;
+BOOL bDrag = FALSE;
+
+// キャプチャモード開始
+BOOL StartCapture()
+{
+	RECT rect;
+	::GetWindowRect(::GetDesktopWindow(), &rect);
+	rect.right = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+	rect.bottom = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+	// 画面がちらつくので、最初は0,0でウインドウ作成しといて
+	// 準備できたらごりっと拡大
+	HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_COMPOSITED | WS_EX_TOOLWINDOW,
+		::layer1WindowClass, layer1WindowClass, WS_POPUP,
+		//0,0,0,0, NULL, NULL, g_hInstance, NULL);
+		rect.left,rect.top,rect.right - rect.left,rect.bottom - rect.top, NULL, NULL, g_hInstance, NULL);
+	::SetLayeredWindowAttributes(hWnd, RGB(255,0,0), 100, LWA_COLORKEY | LWA_ALPHA);
+	if(hWnd == NULL){
+		::ShowLastError();
+		return FALSE;
+	}
+	ShowWindow(hWnd, SW_SHOW);
+	UpdateWindow(hWnd);
+	::SetWindowTopMost(hWnd);
+
+	// 選択領域
+	HWND hWnd2 = ::CreateWindowEx(WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
+		layer2WindowClass, layer2WindowClass, WS_POPUP,
+		rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+		NULL, NULL, g_hInstance, NULL);
+	if(hWnd == NULL){
+		::ShowLastError();
+		return FALSE;
+	}
+	ShowWindow(hWnd2, SW_SHOW);
+	UpdateWindow(hWnd2);
+	::SetWindowTopMost(hWnd2);
+		
+	// kokokokokoko
+
+	return FALSE;
+}
+
+BOOL StopCapture()
+{
+	return FALSE;
+}
+
+// 描画するだけノプロシージャとして使ってる
+LRESULT CALLBACK SelectedAreaWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch(message){
+	case WM_ERASEBKGND:
+		return FALSE;
+	}
+	return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+// 実際にマウスイベントとかを処理する透明なレイヤー
+LRESULT CALLBACK LayerWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	PAINTSTRUCT ps;
+	HDC hdc;
+
+	static RECT windowRect;
+	static HBRUSH transparentBrush = NULL;
+	static HBRUSH colorBrush = NULL;
+	static HBRUSH colorBrush2 = NULL;
+	static HBITMAP hOldBitmap = NULL;
+	static HBITMAP hBitmap = NULL;
+	static HFONT hFont;
+
+	switch (message)
+	{
+	case WM_CREATE:
+		::GetClientRect(hWnd, &windowRect);
+		transparentBrush = ::CreateSolidBrush(RGB(255,0,0));
+		colorBrush = ::CreateSolidBrush(RGB(100,100,100));
+		colorBrush2 = ::CreateSolidBrush(RGB(0,0,255));
+		hFont = ::QuickCreateFont(18, L"Tahoma");
+
+		// メモリデバイスコンテキストの作成
+		{
+			g_hMemDC = ::CreateCompatibleDC(::GetDC(hWnd));
+			hBitmap = ::CreateCompatibleBitmap(::GetDC(hWnd), windowRect.right, windowRect.bottom);
+			hOldBitmap = (HBITMAP)::SelectObject(g_hMemDC, hBitmap);
+		}
+		return TRUE;
+	case WM_COMMAND:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+
+	case WM_KEYDOWN:
+		if(wParam == VK_CONTROL){
+			// 正規化モードON
+			bNormalize = TRUE;
+			return TRUE;
+		}
+
+		if(wParam == VK_SHIFT){
+			bStick = TRUE;
+			return TRUE;
+		}
+
+		// なんかキーおされたら中断します
+		bCapture = FALSE;
+		::InvalidateRect(hWnd, NULL, FALSE);
+		::DestroyWindow(hWnd);
+		break;
+
+	case WM_KEYUP:
+		if(wParam == VK_CONTROL){
+			bNormalize = FALSE;
+			return TRUE;
+		}
+
+		if(wParam == VK_SHIFT){
+			bStick = FALSE;
+			return TRUE;
+		}
+
+		// なんかキーおされたら中断します
+		bCapture = FALSE;
+		::InvalidateRect(hWnd, NULL, FALSE);
+		::DestroyWindow(hWnd);
+		break;
+
+	case WM_ERASEBKGND:
+		return FALSE;
+
+	case WM_PAINT:
+		//::FillRect(::g_hMemDC, &windowRect, colorBrush2);
+		::FillRect(::g_hMemDC, &windowRect, transparentBrush);
+		
+		if(bCapture){
+			RECT rect = selected;
+			trace(L"selected: %d,%d\n", selected.bottom - selected.top,
+				selected.right - selected.left);
+
+			RectangleNormalize(&rect);
+
+			// 描画可能な最小単位よりも大きかったときだけ撮影可能
+			int w = abs(rect.right - rect.left);
+			int h = abs(rect.bottom - rect.top);
+
+			if(CAPTURE_MIN_WIDTH < w && CAPTURE_MIN_HEIGHT < h){
+				::FillRect(::g_hMemDC, &rect, colorBrush);
+
+				// ウインドウのサイズを描画
+				HFONT hOldFont = SelectFont(g_hMemDC, hFont);
+
+				// マウスカーソルの右下に座標を描画する
+				POINT pt;
+				::GetCursorPos(&pt);
+
+				//int parentMode = ::SetBkMode(::g_hMemDC, TRANSPARENT);
+				::SelectObject(::g_hMemDC, ::CreateSolidBrush(RGB(255,255,255)));
+				::TextFormatOut(::g_hMemDC, pt.x + 10, pt.y, L"%d,%d",
+					rect.right - rect.left,
+					rect.bottom - rect.top);
+
+				// fontを戻す
+				SelectFont(g_hMemDC, hOldFont);
+			}else{
+				//::ErrorMessageBox(L"test");
+				::FillRect(::g_hMemDC, &selected, colorBrush2);
+			}
+		}
+
+		hdc = BeginPaint(hWnd, &ps);
+		::BitBlt(hdc, 0, 0, windowRect.right, windowRect.bottom, ::g_hMemDC, 0, 0, SRCCOPY);
+		EndPaint(hWnd, &ps);
+		return TRUE;
+	case WM_DESTROY:
+		::SelectObject(::g_hMemDC, hOldBitmap);
+		SafeDeleteObject(::g_hMemDC);
+		SafeDeleteObject(transparentBrush);
+		SafeDeleteObject(colorBrush);
+		SafeDeleteObject(colorBrush2);
+		SafeDeleteObject(hFont);
+		//PostQuitMessage(0);
+		return TRUE;
+	case WM_LBUTTONDOWN:
+		if(!bCapture)
+		{
+			POINT point = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+			mousePressed = point;
+			bCapture = TRUE;
+		}
+		return TRUE;
+	case WM_LBUTTONUP:
+		if(bCapture){
+			POINT point = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+			::InvalidateRect(hWnd, NULL, FALSE);
+
+			// 描画可能な最小単位よりも大きかったときだけ撮影可能
+			int w = abs(selected.right - selected.left);
+			int h = abs(selected.bottom - selected.top);
+
+			// 最小サイズよりもでかかった場合
+			if(CAPTURE_MIN_WIDTH < w && CAPTURE_MIN_HEIGHT < h){
+				::InvalidateRect(hWnd, NULL, FALSE);
+				::MessageBeep(MB_ICONASTERISK);
+
+				// 選択枠を消します
+				bCapture = FALSE;
+				::NoticeRedraw(hWnd);
+
+				// ノーマライズしたselectedが対象
+				// 撮影します
+				RECT tmp = selected;
+				::RectangleNormalize(&tmp);
+				::ScreenShotAndUpload(hWnd, L"capture.png", &tmp);
+				
+				::DestroyWindow(hWnd);
+				return TRUE;
+			}
+
+			::DestroyWindow(hWnd);
+		}
+		bCapture = FALSE;
+		return TRUE;
+	case WM_RBUTTONDOWN:
+		bDrag = TRUE;
+		::mousePressedR.x = GET_X_LPARAM(lParam);
+		::mousePressedR.y = GET_Y_LPARAM(lParam);
+		lastSelected = selected;
+		break;
+	case WM_RBUTTONUP:
+		bDrag = FALSE;
+		// 原点を書き換える
+		::mousePressed.x = ::selected.left;
+		::mousePressed.y = ::selected.top;
+		break;
+
+	case WM_MOUSEWHEEL: // 選択領域の拡大・縮小
+		{
+			int v =  GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA * 20; // マウスホイールの移動量
+
+			// すべての方向に均等に拡大する
+			selected.left += -v;
+			selected.top += -v;
+			selected.right += v;
+			selected.bottom += v;
+
+			// マウス原点もかえないと他と整合性がとれんくなる
+			::mousePressed.x = selected.left;
+			::mousePressed.y = selected.top;
+
+			::InvalidateRect(hWnd, NULL, FALSE);
+		}
+		break;
+
+	case WM_MOUSEMOVE:
+		if(bDrag){
+			POINT point = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+
+			int w = lastSelected.right - lastSelected.left;
+			int h = lastSelected.bottom - lastSelected.top;
+
+			// マウス押したポイントから現在の位置への移動量分、left/topを移動
+			int x = (point.x - mousePressedR.x);
+			int y = (point.y - mousePressedR.y);
+
+			selected.left = lastSelected.left + point.x - mousePressedR.x;
+			selected.top = lastSelected.top + point.y - mousePressedR.y;
+			selected.right = selected.left + w;
+			selected.bottom = selected.top + h;
+
+		}else if(bCapture){
+			POINT point = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+
+			selected.left = mousePressed.x;
+			selected.top = mousePressed.y;
+			selected.right = point.x;
+			selected.bottom = point.y;
+
+			// ウインドウ縦横サイズの正規化
+			if(bNormalize){
+				// 横のサイズと同じだけの縦のサイズにする
+				if(selected.left < selected.right){
+					if(selected.top < selected.bottom){
+						selected.bottom = selected.top + (selected.right - selected.left);
+					}else{
+						selected.bottom = selected.top - (selected.right - selected.left);
+					}
+				}else{
+					if(selected.top < selected.bottom){
+						selected.bottom = selected.top + (selected.left - selected.right);
+					}else{
+						selected.bottom = selected.top + (selected.right - selected.left);
+					}
+				}
+			}
+		}
+
+		// 画面外にウインドウが出ないようにする補正処理
+		CorrectRect(&selected, &windowRect);
+
+		// システムウインドウとの吸着処理
+		// 移動中にしか吸着処理はしない
+		if(bDrag){
+			if(bStick){
+				// カーソルの位置にウインドウがあればそのウインドウに吸着する
+				//POINT pt;
+				//::GetCursorPos(&pt);
+
+				// すべてのウインドウのうち、自分自身以外で可視なウインドウから調査
+				// カーソルがかぶっているもっとも直近なウインドウを探して自動で大きさを調整する
+				//selected = rect;
+				StickRect(&selected, &windowRect, 50, 50);
+			}
+		}
+		::InvalidateRect(hWnd, NULL, FALSE);
+		return TRUE;
+	case WM_SIZE:
+		::GetClientRect(hWnd, &windowRect);
+		return TRUE;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+// ===========================================
+//	キーコンフィグ系関数
+// ===========================================
 void SetCurrentKeyConfigToGUI(HWND hWnd, KEYINFO *kup, KEYINFO *kdown)
 {
 	LPTSTR up		= ::GetKeyInfoString(kup);
@@ -516,6 +718,9 @@ INT_PTR CALLBACK DlgKeyConfigProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
 	return FALSE;  // DefWindowProc()ではなく、FALSEを返すこと！
 }
 
+// ===========================================
+//	メインウインドウ(非表示状態)
+// ===========================================
 void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 {
 	switch(id){
@@ -558,10 +763,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	case WM_CREATE:
 		// デスクトップコンポジションの無効化
+		/*
 		if( FAILED(::DwmEnableComposition(DWM_EC_DISABLECOMPOSITION)) ){
 			::ShowLastError();
 			return FALSE;
 		}
+		*/
 
 		// 設定ファイル読み込み
 		LoadConfig();
@@ -592,6 +799,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	case WM_TASKTRAY:
 		switch(lParam){
+		case WM_LBUTTONDOWN:
+			::StartCapture();
+			break;
 		case WM_RBUTTONDOWN:
 			::ShowContextMenu(hWnd, IDR_MENU);
 			break;
@@ -604,80 +814,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	if(message == taskBarMsg){
 		TasktrayAddIcon(g_hInstance, WM_TASKTRAY, ID_TASKTRAY, IDI_MAIN, S_TASKTRAY_TIPS, hWnd);
 		return 0;
-	}
-	return DefWindowProc(hWnd, message, wParam, lParam);
-}
-
-void Layer_OnMouseMove(HWND hWnd, int x, int y, UINT keyFlags)
-{
-	if(bDrag){
-		POINT pt = {x, y};
-		::ClientToScreen(hWnd, &pt);
-		trace(L"dragging: %d,%d\n", pt.x, pt.y);
-
-		// 選択領域を描画するために、選択領域の範囲を計算
-		mouseSelectedArea.left = mousePressedPt.x;
-		mouseSelectedArea.top = mousePressedPt.y;
-		mouseSelectedArea.right = x;
-		mouseSelectedArea.bottom = y;
-
-		trace(L"selected area: w:%d,h:%d\n", mouseSelectedArea.right - mouseSelectedArea.left,
-			mouseSelectedArea.bottom - mouseSelectedArea.top);
-
-		::NoticeRedraw(hWnd);
-		::NoticeRedraw(::g_hSelectedArea);
-	}
-}
-
-void Layer_OnMouseLButtonDown(HWND hWnd, BOOL isDoubleClick, int x, int y, UINT keyFlags)
-{
-	POINT pt = {x, y};
-	::ClientToScreen(hWnd, &pt);
-
-	bDrag = TRUE;
-	mousePressedPt = pt;
-	trace(L"mouse ldown: %d,%d\n", x, y);
-}
-
-void Layer_OnMouseLButtonUp(HWND hWnd, int x, int y, UINT keyFlags)
-{
-	POINT pt = {x, y};
-	::ClientToScreen(hWnd, &pt);
-
-	bDrag = FALSE;
-	::mouseReleasedPt = pt;
-	trace(L"mouse lup: %d,%d\n", x, y);
-
-	::DestroyWindow(hWnd);
-	::DestroyWindow(::g_hSelectedArea);
-		
-	// 左上基点の構造体に正規化します
-	RECT rect = ::mouseSelectedArea; // 作業用に複製
-	RectangleNormalize(&rect);
-
-	// 選択領域の再描画
-	::SendMessage(g_hSelectedArea, WM_PAINT, 0, 0);
-
-	ScreenShotAndUpload(hWnd, L"capture.png", &rect);
-}
-
-void Layer_OnPaint(HWND hWnd)
-{
-	if(bDrag){
-		trace(L"layer_onPaint\n");
-	}
-}
-
-LRESULT CALLBACK LayerWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	switch(message){
-		HANDLE_MSG(hWnd, WM_MOUSEMOVE, Layer_OnMouseMove);
-		HANDLE_MSG(hWnd, WM_LBUTTONDOWN, Layer_OnMouseLButtonDown);
-		HANDLE_MSG(hWnd, WM_LBUTTONUP, Layer_OnMouseLButtonUp);
-		HANDLE_MSG(hWnd, WM_PAINT, Layer_OnPaint);
-
-	case WM_ERASEBKGND: // 背景の初期化のための描画を無効化、これによって一瞬ちらつかなくなる
-		return FALSE;
 	}
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }
@@ -729,7 +865,8 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	RegisterClassEx(&wcex);
 
 	wcex.style = 0;
-	wcex.lpfnWndProc = LayerWndProc;
+	//wcex.lpfnWndProc = LayerWndProc;
+	wcex.lpfnWndProc = ::LayerWndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
@@ -742,7 +879,8 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	RegisterClassEx(&wcex);
 	
 	wcex.style = 0;
-	wcex.lpfnWndProc = SelectedAreaWndProc;
+	//wcex.lpfnWndProc = SelectedAreaWndProc;
+	wcex.lpfnWndProc = ::SelectedAreaWndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
