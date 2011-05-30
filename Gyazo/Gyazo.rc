@@ -11,6 +11,7 @@ IDR_MENU MENU {
 		MENUITEM "ウインドウ単位で選択", IDM_INSPECT;
 		MENUITEM "ドラッグで選択", IDM_CAPTURE;
 		MENUITEM "キー設定", IDM_KEYCONFIG;
+		//MENUITEM "出力先", IDM_OUTPUT;
 		MENUITEM "終了", IDM_EXIT;
 	}
 }

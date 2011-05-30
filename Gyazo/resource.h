@@ -12,6 +12,9 @@
 #define IDM_INSPECT 2002
 #define IDM_CAPTURE 2003
 #define IDM_KEYCONFIG 2004
+#define IDM_OUTPUT 2005
+#define IDM_OUTPUT_PREVIEW 2006
+#define IDM_OUTPUT_GYAZO 2007
 
 // UI部品関係
 //	IDC_*: エディット/スタティックコントロールのID

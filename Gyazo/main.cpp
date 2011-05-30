@@ -108,17 +108,22 @@ void SaveConfig()
 //	スクリーンショット撮影簡略化系
 // ===========================================
 // Desktopの指定した範囲をキャプチャしてアップロード
+UINT g_uploadTarget = IDM_OUTPUT_PREVIEW;
 void ScreenShotAndUpload(HWND forErrorMessage, LPCTSTR path, RECT *rect)
 {
 	try{
 		::Screenshot::ScreenshotDesktop(path, rect);
 		::MessageBeep(MB_ICONASTERISK); // 撮影音をこの時点で出す
-		
-		//::ExecuteFile(g_hWnd, path);
 
-		Gyazo *g = new Gyazo();
-		g->UploadFileAndOpenURL(forErrorMessage, path);
-		delete g;
+		// 送信先は右クリメニューで設定した場所
+		// デフォルトはローカルプレビュー
+		if( g_uploadTarget == IDM_OUTPUT_GYAZO ){
+			Gyazo *g = new Gyazo();
+			g->UploadFileAndOpenURL(forErrorMessage, path);
+			delete g;
+		}else{
+			::ExecuteFile(g_hWnd, path);
+		}
 	}catch(exception e){
 		::ErrorMessageBox(L"%s", e);
 	}
@@ -740,6 +745,12 @@ void OnCommand(HWND hWnd, int id, HWND hwndCtl, UINT codeNotify)
 		if(::g_hKeyConfigDlg == NULL)
 			::g_hKeyConfigDlg = ::CreateDialog(::g_hInstance, MAKEINTRESOURCE(IDD_KEYCONFIG_DIALOG), hWnd, DlgKeyConfigProc);
 		break;
+	case IDM_OUTPUT_GYAZO:
+		::g_uploadTarget = IDM_OUTPUT_GYAZO;
+		break;
+	case IDM_OUTPUT_PREVIEW:
+		::g_uploadTarget = IDM_OUTPUT_PREVIEW;
+		break;
 	}
 }
 
@@ -747,6 +758,46 @@ void OnClose(HWND hWnd)
 {
 	::SaveConfig();
 	::DestroyWindow(hWnd);
+}
+
+BOOL ShowGyazoIMContextMenu(HWND hWnd, UINT menuId)
+{
+	HMENU hMenu = ::LoadMenu(NULL, MAKEINTRESOURCE(menuId));
+	HMENU hSubMenu = ::GetSubMenu(hMenu, 0);
+	
+	POINT point;
+	::GetCursorPos(&point);
+
+	::SetForegroundWindow(hWnd);
+
+	// モニタが複数あったら、モニタごとの調整メニューを表示するように
+	HMENU hView = CreatePopupMenu();
+	MENUITEMINFO mii = {0};
+	mii.wID = IDM_OUTPUT;
+	mii.cbSize = sizeof(MENUITEMINFO);
+	mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_SUBMENU;
+	mii.fType = MFT_STRING;
+	mii.hSubMenu = hView;
+	mii.dwTypeData = L"出力先";
+	InsertMenuItem(hSubMenu, 3, TRUE, &mii);
+
+	// 出力先追加
+	mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
+	mii.dwTypeData = L"プレビュー";
+	mii.wID = IDM_OUTPUT_PREVIEW; // 2500 - 2600 reserved for monitors
+	InsertMenuItem(hView, 0, TRUE, &mii);
+
+	mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
+	mii.dwTypeData = L"gyazo.com";
+	mii.wID = IDM_OUTPUT_GYAZO; // 2500 - 2600 reserved for monitors
+	InsertMenuItem(hView, 1, TRUE, &mii);
+
+	// チェック
+	CheckMenuItem(hSubMenu, ::g_uploadTarget, MF_BYCOMMAND | MF_CHECKED);
+
+	::TrackPopupMenu(hSubMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, point.x, point.y, 0, hWnd, NULL);
+	::PostMessage(hWnd, WM_NULL, 0, 0);
+	return TRUE;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -803,7 +854,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			::StartCapture();
 			break;
 		case WM_RBUTTONDOWN:
-			::ShowContextMenu(hWnd, IDR_MENU);
+			::ShowGyazoIMContextMenu(hWnd, IDR_MENU);
+			//::ShowContextMenu(hWnd, IDR_MENU);
 			break;
 		}
 		break;
