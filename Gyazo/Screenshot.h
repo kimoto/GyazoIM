@@ -5,8 +5,12 @@
 #pragma comment(lib, "gdiplus.lib")
 using namespace ::std;
 using namespace ::Gdiplus;
-
 #include "Util.h"
+
+// libpng functions
+#include "png.h"
+#include "zlib.h"
+#pragma comment(lib, "libpng15.lib")
 
 class Screenshot
 {
@@ -25,6 +29,10 @@ public:
 
 	// 指定されたファイル名で、hBitmapを保存します
 	static BOOL Screenshot::SaveToFileAutoDetectFormat(HBITMAP hBitmap, LPCTSTR fileName);
+
+  // 指定されたファイル名で、hBitmapを保存します
+  // LibPngライブラリ使用
+  static BOOL Screenshot::SaveToPngFile(HBITMAP hBitmap, LPCTSTR fileName);
 
 	// 指定のウインドウの、指定の範囲をスクリーンショットします
 	static BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect);

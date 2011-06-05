@@ -144,11 +144,136 @@ BOOL Screenshot::SaveToFileAutoDetectFormat(HBITMAP hBitmap, LPCTSTR fileName)
 	return TRUE;
 }
 
+
+void PNG_write(png_structp png_ptr, png_bytep buf, png_size_t size)
+{
+  FILE *fp = (FILE *)png_get_io_ptr(png_ptr);
+  if(!fp)
+    return;
+
+  fwrite(buf, sizeof(BYTE), size, fp);
+  //fwrite("test", 1, strlen("test") * sizeof(BYTE), fp);
+}
+
+void PNG_flush(png_structp png_ptr){
+  FILE *fp = (FILE *)png_get_io_ptr(png_ptr);
+  if(!fp)
+    return;
+  fflush(fp);
+}
+
+
+BOOL Screenshot::SaveToPngFile(HBITMAP h, LPCTSTR fileName)
+{
+  png_structp png_ptr = png_create_write_struct(
+    PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  if (!png_ptr) return (ERROR);
+
+  if (setjmp(png_jmpbuf(png_ptr))){
+   png_destroy_write_struct(&png_ptr, NULL);
+   return (ERROR);
+  }
+
+  png_infop info_ptr = png_create_info_struct(png_ptr);
+  if (!info_ptr) {
+    png_destroy_write_struct(&png_ptr, 0);
+    return (ERROR);
+  }
+  
+  BITMAP bmp;
+  ::GetObject(h, sizeof(BITMAP), &bmp);
+
+  int len = bmp.bmWidth * bmp.bmHeight * (bmp.bmBitsPixel / 8);
+
+  BYTE *p = (BYTE *)malloc(len * sizeof(BYTE));
+  ::GetBitmapBits(h, len, p);
+
+  int width = bmp.bmWidth;
+  int height = bmp.bmHeight;
+  int depth = 8;
+
+  //png_set_compression_level(png_ptr, Z_BEST_COMPRESSION);
+  int color_type = PNG_COLOR_TYPE_RGB;
+
+  // IHDRチャンク
+  // 24bitフルカラーで出力
+  ::png_set_IHDR(png_ptr, info_ptr, width, height,
+    depth,
+    //PNG_COLOR_TYPE_RGB_ALPHA,
+    color_type, // 透過色いらないのではずしてファイルサイズ下げる
+    //PNG_COLOR_TYPE_PALETTE,
+    PNG_INTERLACE_NONE,
+    PNG_COMPRESSION_TYPE_DEFAULT,
+    PNG_FILTER_TYPE_DEFAULT
+    );
+
+  /*
+  // 256色のパレットを作成する
+  png_color colors[256] = {0};
+  colors[0].blue = 255; //青色
+  colors[0].red = 0; //青色
+  colors[0].green = 0; //青色
+  colors[1].blue = 0;
+  colors[1].red = 255;
+  colors[1].green = 0;
+  ::png_set_PLTE(png_ptr, info_ptr, colors, 256);
+  */
+
+  // カキコミ関数の設定
+  FILE *fp = ::_wfopen(fileName, L"wb");
+  png_init_io (png_ptr, fp);
+  ::png_set_write_fn(png_ptr, fp, PNG_write, PNG_flush);
+  
+  int pixel_bytes = 0;
+  if( color_type == PNG_COLOR_TYPE_RGB )
+    pixel_bytes = 3;
+  else if( color_type == PNG_COLOR_TYPE_RGB_ALPHA )
+    pixel_bytes = 4;
+  else if( color_type == PNG_COLOR_TYPE_PALETTE )
+    pixel_bytes = 1;
+  else
+    pixel_bytes = 4; // default = PNG_COLOR_TYPE_RGB_ALPHA
+
+  png_byte **row_pointers = (png_byte **)png_malloc(png_ptr, sizeof(png_byte *) * height);
+  for(int y=0; y<height; y++){
+    row_pointers[y] = (png_byte*)png_malloc(png_ptr, pixel_bytes * width);
+    //memset(row_pointers[y], 0, width * pixel_bytes); // 完全に透過な黒に初期化
+
+    for(int x=0; x<width; x++){
+      if(color_type == PNG_COLOR_TYPE_RGB){
+        row_pointers[y][x * pixel_bytes + 0] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 2];   // R
+        row_pointers[y][x * pixel_bytes + 1] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 1];   // G
+        row_pointers[y][x * pixel_bytes + 2] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 0];   // B
+      }else if(color_type == PNG_COLOR_TYPE_RGB_ALPHA){
+        //row_pointers[y][x * pixel_bytes + 0] = x % 2; // 青
+        row_pointers[y][x * pixel_bytes + 0] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 2];   // R
+        row_pointers[y][x * pixel_bytes + 1] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 1];   // G
+        row_pointers[y][x * pixel_bytes + 2] = (png_byte)p[y * bmp.bmWidthBytes + x * 4 + 0];   // B
+        row_pointers[y][x * pixel_bytes + 3] = (png_byte)255; // A(255 = 不透明, 0 = 透明)
+      }else if(color_type == PNG_COLOR_TYPE_PALETTE){
+        row_pointers[y][x * pixel_bytes + 0] = x % 2; // 青
+      }else{
+        ;
+      }
+    }
+  }
+  ::png_set_rows(png_ptr, info_ptr, (png_bytepp)row_pointers);
+  //::png_write_image(png_ptr, row_pointers);
+
+  ::png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+  ::png_destroy_write_struct(&png_ptr, NULL);
+  ::png_write_end(png_ptr, info_ptr);
+
+  ::fclose(fp);
+  return TRUE;
+}
+
 // 指定のウインドウの、指定の範囲をスクリーンショットします
 BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect)
 {
 	HBITMAP hBitmap = ScreenshotInMemory(window, rect);
-	BOOL bRet = SaveToFileAutoDetectFormat(hBitmap, fileName);
+	//BOOL bRet = SaveToFileAutoDetectFormat(hBitmap, fileName);
+  BOOL bRet = SaveToPngFile(hBitmap, fileName);
 	::DeleteObject(hBitmap);
 	return bRet;
 }
