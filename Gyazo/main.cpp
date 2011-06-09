@@ -119,13 +119,16 @@ void ScreenShotAndUpload(HWND forErrorMessage, LPCTSTR path, RECT *rect)
     if( g_uploadTarget == IDM_OUTPUT_GYAZO ){
       // gyazoで画像データを送信する
       Gyazo *g = new Gyazo();
+      //g->m_settings[L"upload_path"] = L"/upload.cgi";
+      //g->m_settings[L"upload_server"] = L"gyazo.com";
       g->UploadFileAndOpenURL(forErrorMessage, path);
       delete g;
     }else{
       ::ExecuteFile(g_hWnd, path);
     }
   }catch(exception e){
-    ::ErrorMessageBox(L"%s", e);
+    ::PostQuitMessage(0);
+    //::ErrorMessageBox(L"%s", e);
   }
 
   ::MessageBeep(MB_ICONASTERISK); // 投稿音をこの時点で出す

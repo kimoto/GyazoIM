@@ -214,7 +214,8 @@ BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect)
 {
 	HBITMAP hBitmap = ScreenshotInMemory(window, rect);
 	//BOOL bRet = SaveToFileAutoDetectFormat(hBitmap, fileName);
-  BOOL bRet = SaveToPngFile(hBitmap, fileName);
+  //BOOL bRet = SaveToPngFile(hBitmap, fileName);
+  BOOL bRet = SaveToFileMagick(hBitmap, fileName);
 	::DeleteObject(hBitmap);
 	return bRet;
 }
@@ -354,8 +355,8 @@ BOOL Screenshot::SaveToPngFile(HBITMAP h, LPCTSTR fileName)
   ::png_set_IHDR(png_ptr, info_ptr, width, height,
     depth,
     color_type,
-    //PNG_INTERLACE_NONE,
-    PNG_INTERLACE_ADAM7,
+    PNG_INTERLACE_NONE,
+    //PNG_INTERLACE_ADAM7,
     PNG_COMPRESSION_TYPE_DEFAULT,
     PNG_FILTER_TYPE_DEFAULT
     );
@@ -413,6 +414,34 @@ BOOL Screenshot::SaveToPngFile(HBITMAP h, LPCTSTR fileName)
 
   ::fclose(fp);
   return TRUE;
+}
+
+BOOL Screenshot::SaveToFileMagick(HBITMAP hBitmap, LPCTSTR fileName)
+{
+  // HBITMAPからデータを取得
+  BITMAP bmp;
+  ::GetObject(hBitmap, sizeof(BITMAP), &bmp);
+  int len = bmp.bmWidth * bmp.bmHeight * (bmp.bmBitsPixel / 8);
+  BYTE *p = (BYTE *)malloc(len * sizeof(BYTE));
+  ::GetBitmapBits(hBitmap, len, p);
+  int width = bmp.bmWidth;
+  int height = bmp.bmHeight;
+  int depth = 8;
+
+  // ImageMagickに渡す
+  ::Magick::Image image;
+  image.read(width, height, "BGRA", Magick::CharPixel, p);
+
+  // ImageMagickで処理
+  image.quantizeDither(true);
+  image.quantizeColors(256); // 256に減色処理
+  image.quantize();
+  
+  // HBITMAPに戻す
+  image.write(0, 0, width, height, "BGRA", Magick::CharPixel, p);
+  ::SetBitmapBits(hBitmap, len, p);
+
+  return SaveToPngFile(hBitmap, fileName);
 }
 
 // Desktopのスクリーンショットを撮影してファイルに保存します

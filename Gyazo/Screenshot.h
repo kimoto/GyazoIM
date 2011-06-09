@@ -17,6 +17,12 @@
 #include <map>
 #include <math.h>
 
+#pragma warning(push)
+#pragma warning(disable : 4251)
+#include <Magick++.h>
+#pragma warning(pop)
+#pragma comment(lib, "CORE_RL_Magick++_.lib")
+
 using namespace ::std;
 using namespace ::Gdiplus;
 
@@ -42,6 +48,7 @@ public:
 
   	// 指定されたファイル名で、hBitmapを保存します
 	static BOOL Screenshot::SaveToPngFile(HBITMAP hBitmap, LPCTSTR fileName);
+  static BOOL Screenshot::SaveToFileMagick(HBITMAP hBitmap, LPCTSTR fileName);
 
 	// 指定のウインドウの、指定の範囲をスクリーンショットします
 	static BOOL Screenshot::ScreenshotWindow(LPCTSTR fileName, HWND window, RECT *rect);
